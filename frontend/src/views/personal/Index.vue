@@ -39,6 +39,16 @@
             <span>培训推荐</span>
           </template>
         </el-menu-item>
+        <el-menu-item index="/personal/applications">
+          <template #title>
+            <span>我的申请</span>
+          </template>
+        </el-menu-item>
+        <el-menu-item index="/personal/messages">
+          <template #title>
+            <span>消息中心</span>
+          </template>
+        </el-menu-item>
       </el-menu>
       <div class="sidebar-footer">
         <el-button type="danger" size="small" @click="logout">退出登录</el-button>

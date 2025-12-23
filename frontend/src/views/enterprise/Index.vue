@@ -43,6 +43,11 @@
             <span>面试管理</span>
           </template>
         </el-menu-item>
+        <el-menu-item index="/enterprise/talent">
+          <template #title>
+            <span>人才搜索</span>
+          </template>
+        </el-menu-item>
       </el-menu>
       <div class="sidebar-footer">
         <el-button type="danger" size="small" @click="logout">退出登录</el-button>

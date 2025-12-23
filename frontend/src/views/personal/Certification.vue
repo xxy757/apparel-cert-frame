@@ -140,11 +140,13 @@
 
 <script>
 import { ref, reactive } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 
 export default {
   name: 'CertificationManage',
   setup() {
+    const router = useRouter()
     const activeTab = ref('application')
     const applyDialogVisible = ref(false)
     const applyFormRef = ref(null)
@@ -265,8 +267,14 @@ export default {
     }
     
     const startExam = (row) => {
-      // TODO: 开始理论考试
-      ElMessage.info('开始考试功能开发中')
+      // 跳转到考试页面
+      router.push({
+        path: '/personal/exam',
+        query: {
+          applicationId: row.id,
+          examId: row.standardId || 1
+        }
+      })
     }
     
     const uploadPractical = (row) => {

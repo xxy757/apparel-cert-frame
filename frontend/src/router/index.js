@@ -40,6 +40,21 @@ const routes = [
         path: 'training',
         name: 'TrainingRecommend',
         component: () => import('../views/personal/Training.vue')
+      },
+      {
+        path: 'exam',
+        name: 'OnlineExam',
+        component: () => import('../views/personal/Exam.vue')
+      },
+      {
+        path: 'applications',
+        name: 'MyApplications',
+        component: () => import('../views/personal/Applications.vue')
+      },
+      {
+        path: 'messages',
+        name: 'MyMessages',
+        component: () => import('../views/personal/Messages.vue')
       }
     ]
   },
@@ -67,6 +82,11 @@ const routes = [
         path: 'interview',
         name: 'EnterpriseInterview',
         component: () => import('../views/enterprise/Interview.vue')
+      },
+      {
+        path: 'talent',
+        name: 'TalentSearch',
+        component: () => import('../views/enterprise/TalentSearch.vue')
       }
     ]
   },
