@@ -31,7 +31,7 @@ public class CertificateServiceImpl extends ServiceImpl<CertificateMapper, Certi
     public Page<Certificate> pageQuery(Integer page, Integer size, String keyword, String certificationType, Integer level, String status) {
         Page<Certificate> pageInfo = new Page<>(page, size);
         QueryWrapper<Certificate> wrapper = new QueryWrapper<>();
-        
+
         if (keyword != null && !keyword.isEmpty()) {
             wrapper.like("name", keyword).or().like("certificate_number", keyword);
         }
@@ -42,9 +42,9 @@ public class CertificateServiceImpl extends ServiceImpl<CertificateMapper, Certi
             wrapper.eq("level", level);
         }
         if (status != null && !status.isEmpty()) {
-            wrapper.eq("status", status);
+            wrapper.eq("certificate_status", status);
         }
-        
+
         wrapper.orderByDesc("issue_date");
         return certificateMapper.selectPage(pageInfo, wrapper);
     }
@@ -87,7 +87,7 @@ public class CertificateServiceImpl extends ServiceImpl<CertificateMapper, Certi
         certificate.setIdCard("123456789012345678"); // TODO: 从用户信息中获取
         certificate.setIssueDate(new Date());
         certificate.setExpireDate(new Date(System.currentTimeMillis() + 365L * 24 * 60 * 60 * 1000)); // 有效期1年
-        certificate.setStatus("有效");
+        certificate.setCertificateStatus("有效");
         certificate.setIssuer("服装行业人才技能认证中心");
         certificate.setDescription("服装行业技能认证证书");
         
@@ -98,7 +98,7 @@ public class CertificateServiceImpl extends ServiceImpl<CertificateMapper, Certi
     @Override
     public boolean verifyCertificate(String certificateNumber) {
         Certificate certificate = this.getByCertificateNumber(certificateNumber);
-        return certificate != null && "有效".equals(certificate.getStatus()) && certificate.getExpireDate().after(new Date());
+        return certificate != null && "有效".equals(certificate.getCertificateStatus()) && certificate.getExpireDate().after(new Date());
     }
 
     @Override
@@ -120,7 +120,7 @@ public class CertificateServiceImpl extends ServiceImpl<CertificateMapper, Certi
     public boolean updateCertificateStatus(Long certificateId, String status) {
         Certificate certificate = new Certificate();
         certificate.setId(certificateId);
-        certificate.setStatus(status);
+        certificate.setCertificateStatus(status);
         return this.updateById(certificate);
     }
 
