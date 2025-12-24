@@ -5,12 +5,21 @@
       <div class="login-tabs">
         <el-tabs v-model="activeTab" type="card">
           <el-tab-pane label="个人登录" name="personal">
-            <el-form ref="personalForm" :model="personalForm" :rules="rules" label-width="80px">
+            <el-form ref="personalFormRef" :model="personalForm" :rules="rules" label-width="80px">
               <el-form-item label="用户名" prop="username">
-                <el-input v-model="personalForm.username" placeholder="请输入用户名"></el-input>
+                <el-input
+                  v-model="personalForm.username"
+                  placeholder="请输入用户名"
+                  autocomplete="off"
+                ></el-input>
               </el-form-item>
               <el-form-item label="密码" prop="password">
-                <el-input v-model="personalForm.password" type="password" placeholder="请输入密码"></el-input>
+                <el-input
+                  v-model="personalForm.password"
+                  type="password"
+                  placeholder="请输入密码"
+                  autocomplete="new-password"
+                ></el-input>
               </el-form-item>
               <el-form-item>
                 <div class="login-actions">
@@ -25,12 +34,21 @@
             </el-form>
           </el-tab-pane>
           <el-tab-pane label="企业登录" name="enterprise">
-            <el-form ref="enterpriseForm" :model="enterpriseForm" :rules="rules" label-width="80px">
+            <el-form ref="enterpriseFormRef" :model="enterpriseForm" :rules="rules" label-width="80px">
               <el-form-item label="用户名" prop="username">
-                <el-input v-model="enterpriseForm.username" placeholder="请输入用户名"></el-input>
+                <el-input
+                  v-model="enterpriseForm.username"
+                  placeholder="请输入用户名"
+                  autocomplete="off"
+                ></el-input>
               </el-form-item>
               <el-form-item label="密码" prop="password">
-                <el-input v-model="enterpriseForm.password" type="password" placeholder="请输入密码"></el-input>
+                <el-input
+                  v-model="enterpriseForm.password"
+                  type="password"
+                  placeholder="请输入密码"
+                  autocomplete="new-password"
+                ></el-input>
               </el-form-item>
               <el-form-item>
                 <div class="login-actions">
@@ -51,9 +69,10 @@
 </template>
 
 <script>
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import request from '../utils/request'
 
 export default {
   name: 'Login',
@@ -71,7 +90,7 @@ export default {
     })
     const personalFormRef = ref(null)
     const enterpriseFormRef = ref(null)
-    
+
     const rules = {
       username: [
         { required: true, message: '请输入用户名', trigger: 'blur' }
@@ -82,36 +101,125 @@ export default {
     }
     
     const login = async (type) => {
-      loading.value = true
-      try {
-        // TODO: 调用登录接口
-        // 模拟登录成功
-        localStorage.setItem('token', 'mock-token')
-        localStorage.setItem('userType', type)
-        ElMessage.success('登录成功')
-        // 根据用户类型跳转到对应的中心页面
-        const redirectPath = type === 'personal' ? '/personal/resume' : '/enterprise/job'
-        router.replace(redirectPath)
-      } catch (error) {
-        ElMessage.error('登录失败：' + (error.message || '未知错误'))
-      } finally {
-        loading.value = false
+      const formRef = type === 'personal' ? personalFormRef : enterpriseFormRef
+      const form = type === 'personal' ? personalForm : enterpriseForm
+
+      if (!formRef.value) {
+        ElMessage.error('表单未加载')
+        return
       }
+
+      // 验证表单
+      formRef.value.validate(async (valid) => {
+        if (!valid) {
+          ElMessage.error('请填写完整的登录信息')
+          return false
+        }
+
+        loading.value = true
+
+        try {
+          // 根据用户类型调用不同的登录接口
+          const loginUrl = type === 'personal' ? '/auth/login/personal' : '/auth/login/enterprise'
+          const response = await request.post(loginUrl, {
+            username: form.username,
+            password: form.password
+          })
+
+          // 保存 token 和用户信息
+          if (response.data && response.data.token) {
+            localStorage.setItem('token', response.data.token)
+            localStorage.setItem('userType', type)
+            localStorage.setItem('userId', response.data.userId || response.data.id || '')
+            localStorage.setItem('username', form.username)
+
+            ElMessage.success('登录成功')
+
+            // 根据用户类型跳转到对应的中心页面
+            const redirectPath = type === 'personal' ? '/personal/resume' : '/enterprise/job'
+            router.replace(redirectPath)
+          } else {
+            ElMessage.error('登录失败：返回数据格式错误')
+          }
+        } catch (error) {
+          console.error('登录失败:', error)
+          ElMessage.error(error.message || '登录失败，请检查用户名和密码')
+        } finally {
+          loading.value = false
+        }
+      })
     }
     
     const resetForm = (formName) => {
       if (formName === 'personalForm') {
         personalFormRef.value.resetFields()
+        // 强制清空密码字段
+        personalForm.password = ''
       } else {
         enterpriseFormRef.value.resetFields()
+        // 强制清空密码字段
+        enterpriseForm.password = ''
       }
     }
-    
+
     const forgetPassword = () => {
       // TODO: 实现忘记密码功能
       ElMessage.info('忘记密码功能开发中')
     }
-    
+
+    // 清除所有登录表单数据的函数
+    const clearAllForms = () => {
+      // 清空个人表单
+      personalForm.username = ''
+      personalForm.password = ''
+
+      // 清空企业表单
+      enterpriseForm.username = ''
+      enterpriseForm.password = ''
+
+      // 重置表单验证状态
+      if (personalFormRef.value) {
+        personalFormRef.value.clearValidate()
+      }
+      if (enterpriseFormRef.value) {
+        enterpriseFormRef.value.clearValidate()
+      }
+    }
+
+    // 监听标签页切换，清空另一个表单的数据
+    watch(activeTab, (_newTab, oldTab) => {
+      if (oldTab === 'personal') {
+        // 从个人登录切换到企业登录，清空个人表单
+        personalForm.username = ''
+        personalForm.password = ''
+        if (personalFormRef.value) {
+          personalFormRef.value.clearValidate()
+        }
+      } else if (oldTab === 'enterprise') {
+        // 从企业登录切换到个人登录，清空企业表单
+        enterpriseForm.username = ''
+        enterpriseForm.password = ''
+        if (enterpriseFormRef.value) {
+          enterpriseFormRef.value.clearValidate()
+        }
+      }
+    })
+
+    // 组件挂载时清除localStorage中可能存在的旧密码数据
+    onMounted(() => {
+      // 清除可能保存的敏感信息
+      localStorage.removeItem('savedPassword')
+      localStorage.removeItem('savedUsername')
+
+      // 清空所有表单
+      clearAllForms()
+    })
+
+    // 组件卸载前清空表单数据
+    onBeforeUnmount(() => {
+      clearAllForms()
+    })
+
     return {
       activeTab,
       loading,

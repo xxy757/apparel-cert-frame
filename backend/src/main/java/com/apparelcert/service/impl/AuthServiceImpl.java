@@ -60,6 +60,9 @@ public class AuthServiceImpl implements AuthService {
         String encodedPassword = passwordEncoder.encode(userPersonal.getPassword());
         userPersonal.setPassword(encodedPassword);
 
+        // 设置用户状态为正常
+        userPersonal.setStatus(1);
+
         // 插入用户
         int inserted = userPersonalMapper.insert(userPersonal);
         if (inserted > 0) {

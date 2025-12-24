@@ -1,5 +1,7 @@
 package com.apparelcert.entity;
 
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -12,6 +14,7 @@ import lombok.EqualsAndHashCode;
 @TableName("user_enterprise")
 public class UserEnterprise extends BaseEntity {
 
+    @TableId(type = IdType.AUTO)
     private Long id;
     private String username;
     private String password;

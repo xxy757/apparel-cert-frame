@@ -6,7 +6,7 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://localhost:3306/apparel_cert?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=Asia/Shanghai
     username: root
-    password: root
+    password: 6654321
   mvc:
     pathmatch:
       matching-strategy: ant_path_matcher
@@ -40,7 +40,7 @@ mybatis-plus:
 
 apparelcert:
   jwt:
-    secret: your-jwt-secret-key
+    secret: apparelcert2024secretkeymustbeatleast32byteslongforhs512
     expiration: 86400000
   upload:
     path: /uploads/

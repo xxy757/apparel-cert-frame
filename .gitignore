@@ -2,18 +2,28 @@
 node_modules/
 
 # Editor directories and files
-.vscode/
+.DS_Store
+Thumbs.db
+
+# Java/Maven
+target/
+*.class
+*.jar
+*.war
+*.ear
+.mvn/
+mvnw
+mvnw.cmd
+
+# IDE
 .idea/
+*.iml
+.vscode/
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
-
-# Build outputs
-dist/
-build/
-*.log
 
 # Environment variables
 .env

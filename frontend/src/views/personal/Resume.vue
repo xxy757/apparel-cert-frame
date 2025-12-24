@@ -1,14 +1,19 @@
 <template>
-  <div class="resume-container">
+  <div class="resume-container" v-loading="loading">
     <el-card shadow="hover">
       <template #header>
         <div class="card-header">
           <h2>简历管理</h2>
-          <el-button type="primary" @click="editResume">编辑简历</el-button>
+          <el-button type="primary" @click="editResume" :disabled="loading">编辑简历</el-button>
         </div>
       </template>
-      
-      <div v-if="!isEditing" class="resume-preview">
+
+      <!-- 空状态提示 -->
+      <el-empty v-if="!loading && !resume.basicInfo.name && !isEditing" description="还没有简历，点击上方编辑简历按钮创建您的简历">
+        <el-button type="primary" @click="editResume">立即创建</el-button>
+      </el-empty>
+
+      <div v-if="!isEditing && resume.basicInfo.name" class="resume-preview">
         <div class="resume-header">
           <h1>{{ resume.basicInfo.name }}</h1>
           <p class="contact-info">
@@ -171,64 +176,32 @@
 </template>
 
 <script>
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import request from '../../utils/request'
 
 export default {
   name: 'ResumeManage',
   setup() {
     const isEditing = ref(false)
     const resumeForm = ref(null)
-    
+    const loading = ref(false)
+
+    // 初始化空简历数据
     const resume = reactive({
       basicInfo: {
-        name: '张三',
-        phone: '13800138000',
-        email: 'zhangsan@example.com',
-        location: '北京',
-        careerObjective: '寻求服装设计师职位，展示创意设计能力，为品牌创造价值'
+        name: '',
+        phone: '',
+        email: '',
+        location: '',
+        careerObjective: ''
       },
-      education: [
-        {
-          school: '北京服装学院',
-          major: '服装设计',
-          degree: '本科',
-          startDate: '2018-09',
-          endDate: '2022-06',
-          description: '主修服装设计、服装史、色彩搭配等课程'
-        }
-      ],
-      workExperience: [
-        {
-          company: '某服装品牌',
-          position: '助理设计师',
-          startDate: '2022-07',
-          endDate: '2023-12',
-          responsibilities: [
-            '参与季节性服装设计',
-            '协助设计师绘制设计稿',
-            '跟进样衣制作过程'
-          ]
-        }
-      ],
-      projectExperience: [
-        {
-          name: '2023春季系列设计',
-          role: '助理设计师',
-          startDate: '2022-10',
-          endDate: '2023-01',
-          description: '参与春季系列服装的设计与开发',
-          achievements: ['设计的3款服装被选中量产', '协助完成了20款设计稿']
-        }
-      ],
-      skills: ['服装设计', 'Adobe Illustrator', 'Adobe Photoshop', '色彩搭配'],
-      certificates: [
-        {
-          name: '服装设计师初级认证',
-          date: '2022-06'
-        }
-      ],
-      isPublic: true
+      education: [],
+      workExperience: [],
+      projectExperience: [],
+      skills: [],
+      certificates: [],
+      isPublic: false
     })
     
     const resumeRules = {
@@ -245,32 +218,128 @@ export default {
       ]
     }
     
+    // 加载简历数据
+    const loadResume = async () => {
+      loading.value = true
+      try {
+        const response = await request.get('/resume/current')
+
+        if (response.data) {
+          // 更新简历数据
+          Object.assign(resume.basicInfo, response.data.basicInfo || {})
+          resume.education = response.data.education || []
+          resume.workExperience = response.data.workExperience || []
+          resume.projectExperience = response.data.projectExperience || []
+          resume.skills = response.data.skills || []
+          resume.certificates = response.data.certificates || []
+          resume.isPublic = response.data.isPublic || false
+        }
+      } catch (error) {
+        console.error('加载简历失败:', error)
+        // 如果是404，说明用户还没有简历，不显示错误
+        if (error.response?.status !== 404) {
+          ElMessage.error('加载简历失败，请刷新重试')
+        }
+      } finally {
+        loading.value = false
+      }
+    }
+
     const editResume = () => {
       isEditing.value = true
     }
-    
-    const saveResume = () => {
-      // TODO: 调用保存简历接口
-      isEditing.value = false
-      ElMessage.success('简历保存成功')
+
+    const saveResume = async () => {
+      if (!resumeForm.value) {
+        ElMessage.error('表单未加载')
+        return
+      }
+
+      // 验证表单
+      resumeForm.value.validate(async (valid) => {
+        if (!valid) {
+          ElMessage.error('请填写必填项')
+          return false
+        }
+
+        loading.value = true
+        try {
+          // 调用保存简历接口
+          await request.put('/resume', {
+            basicInfo: resume.basicInfo,
+            education: resume.education,
+            workExperience: resume.workExperience,
+            projectExperience: resume.projectExperience,
+            skills: resume.skills,
+            certificates: resume.certificates,
+            isPublic: resume.isPublic
+          })
+
+          isEditing.value = false
+          ElMessage.success('简历保存成功')
+        } catch (error) {
+          console.error('保存简历失败:', error)
+          ElMessage.error(error.message || '保存简历失败，请重试')
+        } finally {
+          loading.value = false
+        }
+      })
     }
-    
+
     const cancelEdit = () => {
       isEditing.value = false
-      if (resumeForm.value) {
-        resumeForm.value.resetFields()
+      // 重新加载简历数据，放弃编辑
+      loadResume()
+    }
+
+    const exportResume = async () => {
+      loading.value = true
+      try {
+        const response = await request.get('/resume/export', {
+          responseType: 'blob'  // 重要：告诉axios这是二进制数据
+        })
+
+        // 创建下载链接
+        const blob = new Blob([response], { type: 'application/pdf' })
+        const url = window.URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+        link.download = `简历_${resume.basicInfo.name || '未命名'}_${new Date().getTime()}.pdf`
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        window.URL.revokeObjectURL(url)
+
+        ElMessage.success('简历导出成功')
+      } catch (error) {
+        console.error('导出简历失败:', error)
+        ElMessage.error('导出简历失败，请重试')
+      } finally {
+        loading.value = false
       }
     }
-    
-    const exportResume = () => {
-      // TODO: 实现导出PDF功能
-      ElMessage.info('导出PDF功能开发中')
+
+    const togglePublic = async () => {
+      loading.value = true
+      try {
+        await request.put('/resume/public', {
+          isPublic: resume.isPublic
+        })
+        ElMessage.success(resume.isPublic ? '简历已设为公开' : '简历已设为私有')
+      } catch (error) {
+        console.error('设置简历公开状态失败:', error)
+        // 失败时恢复状态
+        resume.isPublic = !resume.isPublic
+        ElMessage.error('设置失败，请重试')
+      } finally {
+        loading.value = false
+      }
     }
-    
-    const togglePublic = () => {
-      // TODO: 调用设置简历公开状态接口
-      ElMessage.success(resume.isPublic ? '简历已设为公开' : '简历已设为私有')
-    }
+
+    // 组件挂载时加载简历
+    onMounted(() => {
+      loadResume()
+    })
     
     const addEducation = () => {
       resume.education.push({
@@ -293,9 +362,11 @@ export default {
     
     return {
       isEditing,
+      loading,
       resume,
       resumeForm,
       resumeRules,
+      loadResume,
       editResume,
       saveResume,
       cancelEdit,

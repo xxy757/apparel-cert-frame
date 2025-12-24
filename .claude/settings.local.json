@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(jar:*)",
+      "Bash(unzip:*)",
+      "Bash(curl:*)"
+    ]
+  }
+}

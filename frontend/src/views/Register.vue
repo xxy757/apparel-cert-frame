@@ -94,6 +94,7 @@
 import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import request from '../utils/request'
 
 export default {
   name: 'Register',
@@ -197,6 +198,7 @@ export default {
 
     const register = (type) => {
       const formRef = type === 'personal' ? personalFormRef : enterpriseFormRef
+      const form = type === 'personal' ? personalForm : enterpriseForm
 
       if (!formRef.value) {
         ElMessage.error('表单未加载，请刷新页面')
@@ -204,7 +206,7 @@ export default {
       }
 
       // 验证表单
-      formRef.value.validate((valid) => {
+      formRef.value.validate(async (valid) => {
         if (!valid) {
           ElMessage.error('请检查表单信息是否完整正确')
           return false
@@ -212,20 +214,54 @@ export default {
 
         loading.value = true
 
-        // 模拟注册请求延迟
-        setTimeout(() => {
-          // 模拟保存登录信息
-          localStorage.setItem('token', 'mock_token_' + Date.now())
-          localStorage.setItem('userType', type)
+        try {
+          // 构建注册请求数据
+          const registerData = {
+            username: form.username,
+            password: form.password
+          }
 
-          // 注册成功提示
-          ElMessage.success(type === 'personal' ? '个人注册成功' : '企业注册成功，待审核')
+          // 根据用户类型准备不同的数据和API路径
+          let registerUrl = ''
+          if (type === 'personal') {
+            registerUrl = '/auth/register/personal'
+            registerData.name = form.name
+            registerData.phone = form.phone
+            registerData.email = form.email
+            registerData.careerDirection = form.careerDirection
+          } else {
+            registerUrl = '/auth/register/enterprise'
+            registerData.companyName = form.companyName
+            registerData.companyType = form.companyType || ''
+            registerData.contactPerson = form.contactPerson
+            registerData.contactPhone = form.contactPhone
+            registerData.email = form.email
+            registerData.address = form.address || ''
+          }
 
+          // 调用后端注册接口
+          const response = await request.post(registerUrl, registerData)
+
+          // 注册成功
+          if (response.code === 200 || response.data) {
+            ElMessage.success(type === 'personal' ? '个人注册成功，请登录' : '企业注册成功，待审核后可登录')
+
+            // 重置表单
+            formRef.value.resetFields()
+
+            // 延迟跳转到登录页
+            setTimeout(() => {
+              router.push('/login')
+            }, 1500)
+          } else {
+            ElMessage.error(response.message || '注册失败，请重试')
+          }
+        } catch (error) {
+          console.error('注册失败:', error)
+          ElMessage.error(error.message || '注册失败，请检查网络或联系管理员')
+        } finally {
           loading.value = false
-
-          // 跳转到登录页
-          router.push('/login')
-        }, 1000)
+        }
       })
     }
 

@@ -100,9 +100,17 @@ export default {
     }
     
     const logout = () => {
-      // 清除本地存储
+      // 清除所有本地存储的用户信息
       localStorage.removeItem('token')
       localStorage.removeItem('userType')
+      localStorage.removeItem('userId')
+      localStorage.removeItem('username')
+      localStorage.removeItem('savedPassword')
+      localStorage.removeItem('savedUsername')
+
+      // 清除所有可能的缓存数据
+      sessionStorage.clear()
+
       ElMessage.success('退出登录成功')
       router.push('/login')
     }

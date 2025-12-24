@@ -2,10 +2,11 @@ package com.apparelcert.utils;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureAlgorithm;
+import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import javax.crypto.SecretKey;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
@@ -29,12 +30,15 @@ public class JwtUtil {
         Map<String, Object> claims = new HashMap<>();
         claims.put("userId", userId);
         claims.put("userType", userType);
+
+        SecretKey key = Keys.hmacShaKeyFor(secret.getBytes());
+
         return Jwts.builder()
                 .setClaims(claims)
                 .setSubject(userId.toString())
                 .setIssuedAt(new Date())
                 .setExpiration(new Date(System.currentTimeMillis() + expiration))
-                .signWith(SignatureAlgorithm.HS512, secret)
+                .signWith(key)
                 .compact();
     }
 
@@ -43,8 +47,10 @@ public class JwtUtil {
      */
     public Claims getClaimsFromToken(String token) {
         try {
-            return Jwts.parser()
-                    .setSigningKey(secret)
+            SecretKey key = Keys.hmacShaKeyFor(secret.getBytes());
+            return Jwts.parserBuilder()
+                    .setSigningKey(key)
+                    .build()
                     .parseClaimsJws(token)
                     .getBody();
         } catch (Exception e) {
