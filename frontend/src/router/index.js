@@ -119,20 +119,38 @@ const router = createRouter({
   routes
 })
 
-// 路由守卫
+// 路由守卫 - 简单的身份验证
 router.beforeEach((to, from, next) => {
   const token = localStorage.getItem('token')
-  // 不需要登录的页面
-  const whiteList = ['/login', '/register', '/']
-  if (whiteList.includes(to.path)) {
-    next()
-  } else {
-    if (token) {
-      next()
-    } else {
-      next('/login')
-    }
+  const userType = localStorage.getItem('userType')
+
+  // 不需要登录的公开路由
+  const publicRoutes = ['/login', '/register', '/']
+
+  if (publicRoutes.includes(to.path)) {
+    // 公开路由直接通过
+    return next()
   }
+
+  // 需要登录的路由
+  if (!token) {
+    // 没有token，跳转到登录页
+    return next('/login')
+  }
+
+  // 有token，检查是否访问了正确的用户中心
+  if (to.path.startsWith('/personal') && userType !== 'personal') {
+    return next('/login')
+  }
+  if (to.path.startsWith('/enterprise') && userType !== 'enterprise') {
+    return next('/login')
+  }
+  if (to.path.startsWith('/admin') && userType !== 'admin') {
+    return next('/login')
+  }
+
+  // 允许访问
+  return next()
 })
 
 export default router

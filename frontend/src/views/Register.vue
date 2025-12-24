@@ -5,7 +5,7 @@
       <div class="register-tabs">
         <el-tabs v-model="activeTab" type="card">
           <el-tab-pane label="个人注册" name="personal">
-            <el-form ref="personalForm" :model="personalForm" :rules="personalRules" label-width="100px">
+            <el-form ref="personalFormRef" :model="personalForm" :rules="personalRules" label-width="100px">
               <el-form-item label="用户名" prop="username">
                 <el-input v-model="personalForm.username" placeholder="请输入用户名"></el-input>
               </el-form-item>
@@ -35,8 +35,8 @@
               </el-form-item>
               <el-form-item>
                 <div class="register-actions">
-                  <el-button type="primary" @click="register('personal')" :loading="loading">注册</el-button>
-                  <el-button @click="resetForm('personalForm')">重置</el-button>
+                  <el-button type="primary" @click.prevent="register('personal')" :loading="loading">注册</el-button>
+                  <el-button @click.prevent="resetForm('personalForm')">重置</el-button>
                 </div>
               </el-form-item>
               <div class="register-footer">
@@ -45,7 +45,7 @@
             </el-form>
           </el-tab-pane>
           <el-tab-pane label="企业注册" name="enterprise">
-            <el-form ref="enterpriseForm" :model="enterpriseForm" :rules="enterpriseRules" label-width="100px">
+            <el-form ref="enterpriseFormRef" :model="enterpriseForm" :rules="enterpriseRules" label-width="100px">
               <el-form-item label="用户名" prop="username">
                 <el-input v-model="enterpriseForm.username" placeholder="请输入用户名"></el-input>
               </el-form-item>
@@ -75,8 +75,8 @@
               </el-form-item>
               <el-form-item>
                 <div class="register-actions">
-                  <el-button type="primary" @click="register('enterprise')" :loading="loading">注册</el-button>
-                  <el-button @click="resetForm('enterpriseForm')">重置</el-button>
+                  <el-button type="primary" @click.prevent="register('enterprise')" :loading="loading">注册</el-button>
+                  <el-button @click.prevent="resetForm('enterpriseForm')">重置</el-button>
                 </div>
               </el-form-item>
               <div class="register-footer">
@@ -101,7 +101,7 @@ export default {
     const router = useRouter()
     const loading = ref(false)
     const activeTab = ref('personal')
-    
+
     const personalForm = reactive({
       username: '',
       password: '',
@@ -111,7 +111,7 @@ export default {
       email: '',
       careerDirection: ''
     })
-    
+
     const enterpriseForm = reactive({
       username: '',
       password: '',
@@ -123,10 +123,20 @@ export default {
       email: '',
       address: ''
     })
-    
+
     const personalFormRef = ref(null)
     const enterpriseFormRef = ref(null)
-    
+
+    // 验证确认密码 - 必须在 rules 之前定义
+    const validateConfirmPassword = (rule, value, callback) => {
+      const form = activeTab.value === 'personal' ? personalForm : enterpriseForm
+      if (value !== form.password) {
+        callback(new Error('两次输入密码不一致'))
+      } else {
+        callback()
+      }
+    }
+
     const personalRules = {
       username: [
         { required: true, message: '请输入用户名', trigger: 'blur' },
@@ -155,7 +165,7 @@ export default {
         { required: true, message: '请选择职业方向', trigger: 'change' }
       ]
     }
-    
+
     const enterpriseRules = {
       username: [
         { required: true, message: '请输入用户名', trigger: 'blur' },
@@ -184,38 +194,48 @@ export default {
         { type: 'email', message: '请输入正确的邮箱地址', trigger: 'blur' }
       ]
     }
-    
-    const validateConfirmPassword = (rule, value, callback) => {
-      const form = activeTab.value === 'personal' ? personalForm : enterpriseForm
-      if (value !== form.password) {
-        callback(new Error('两次输入密码不一致'))
-      } else {
-        callback()
+
+    const register = (type) => {
+      const formRef = type === 'personal' ? personalFormRef : enterpriseFormRef
+
+      if (!formRef.value) {
+        ElMessage.error('表单未加载，请刷新页面')
+        return
       }
+
+      // 验证表单
+      formRef.value.validate((valid) => {
+        if (!valid) {
+          ElMessage.error('请检查表单信息是否完整正确')
+          return false
+        }
+
+        loading.value = true
+
+        // 模拟注册请求延迟
+        setTimeout(() => {
+          // 模拟保存登录信息
+          localStorage.setItem('token', 'mock_token_' + Date.now())
+          localStorage.setItem('userType', type)
+
+          // 注册成功提示
+          ElMessage.success(type === 'personal' ? '个人注册成功' : '企业注册成功，待审核')
+
+          loading.value = false
+
+          // 跳转到登录页
+          router.push('/login')
+        }, 1000)
+      })
     }
-    
-    const register = async (type) => {
-      loading.value = true
-      try {
-        // TODO: 调用注册接口
-        // 模拟注册成功
-        ElMessage.success(type === 'personal' ? '个人注册成功' : '企业注册成功，待审核')
-        router.push('/login')
-      } catch (error) {
-        ElMessage.error('注册失败：' + (error.message || '未知错误'))
-      } finally {
-        loading.value = false
-      }
-    }
-    
+
     const resetForm = (formName) => {
-      if (formName === 'personalForm') {
-        personalFormRef.value.resetFields()
-      } else {
-        enterpriseFormRef.value.resetFields()
+      const formRef = formName === 'personalForm' ? personalFormRef : enterpriseFormRef
+      if (formRef.value) {
+        formRef.value.resetFields()
       }
     }
-    
+
     return {
       activeTab,
       loading,
@@ -225,6 +245,7 @@ export default {
       enterpriseFormRef,
       personalRules,
       enterpriseRules,
+      validateConfirmPassword,
       register,
       resetForm
     }

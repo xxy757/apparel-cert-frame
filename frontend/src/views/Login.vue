@@ -87,9 +87,11 @@ export default {
         // TODO: 调用登录接口
         // 模拟登录成功
         localStorage.setItem('token', 'mock-token')
-        localStorage.setItem('userType', type === 'personal' ? '1' : '2')
+        localStorage.setItem('userType', type)
         ElMessage.success('登录成功')
-        router.push('/')
+        // 根据用户类型跳转到对应的中心页面
+        const redirectPath = type === 'personal' ? '/personal/resume' : '/enterprise/job'
+        router.replace(redirectPath)
       } catch (error) {
         ElMessage.error('登录失败：' + (error.message || '未知错误'))
       } finally {
