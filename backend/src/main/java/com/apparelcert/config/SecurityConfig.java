@@ -1,28 +1,28 @@
 package com.apparelcert.config;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
+import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig extends WebSecurityConfigurerAdapter {
 
+    @Autowired
+    private JwtAuthenticationFilter jwtAuthenticationFilter;
+
     @Override
     protected void configure(HttpSecurity http) throws Exception {
         http
-            // 为Swagger UI、Knife4j和API路径添加CSRF排除
-            .csrf().ignoringAntMatchers(
-                "/swagger-ui/**",
-                "/v3/api-docs/**",
-                "/swagger-resources/**",
-                "/doc.html",
-                "/webjars/**",
-                "/favicon.ico",
-                "/api/**"
-            )
+            // 禁用CSRF（因为使用JWT，不需要CSRF保护）
+            .csrf().disable()
+            // 配置会话管理为无状态（因为使用JWT，不需要session）
+            .sessionManagement().sessionCreationPolicy(SessionCreationPolicy.STATELESS)
             .and()
             // 配置授权规则
             .authorizeRequests()
@@ -40,7 +40,7 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
             // 其他路径需要认证
             .anyRequest().authenticated()
             .and()
-            // 启用基本认证
-            .httpBasic();
+            // 添加JWT认证过滤器
+            .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
     }
 }

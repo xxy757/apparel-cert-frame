@@ -22,10 +22,6 @@ spring:
           starttls:
             enable: true
             required: true
-  security:
-    user:
-      name: admin
-      password: 123456
   servlet:
     multipart:
       max-file-size: 10MB
