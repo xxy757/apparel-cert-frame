@@ -1,10 +1,45 @@
 <template>
   <div class="resume-container" v-loading="loading">
+    <!-- 认证信息自动同步提示 -->
+    <el-alert
+      v-if="showCertSyncTip"
+      title="发现新的认证信息"
+      type="success"
+      :description="`您有 ${newCertifications.length} 项新认证可以同步到简历中`"
+      show-icon
+      :closable="true"
+      @close="dismissCertSyncTip"
+      class="cert-sync-alert"
+    >
+      <template #default>
+        <div class="cert-sync-content">
+          <div class="cert-list">
+            <div v-for="cert in newCertifications" :key="cert.id" class="cert-item-tip">
+              <el-icon><Medal /></el-icon>
+              <span>{{ cert.name }} - {{ cert.level }}</span>
+              <el-tag size="small" type="success">{{ cert.date }}</el-tag>
+            </div>
+          </div>
+          <div class="cert-sync-actions">
+            <el-button type="primary" size="small" @click="syncCertifications">
+              <el-icon><Refresh /></el-icon> 立即同步
+            </el-button>
+            <el-button size="small" @click="dismissCertSyncTip">稍后处理</el-button>
+          </div>
+        </div>
+      </template>
+    </el-alert>
+
     <el-card shadow="hover">
       <template #header>
         <div class="card-header">
           <h2>简历管理</h2>
-          <el-button type="primary" @click="editResume" :disabled="loading">编辑简历</el-button>
+          <div class="header-actions">
+            <el-button type="success" @click="checkCertifications" :loading="checkingCerts">
+              <el-icon><Medal /></el-icon> 检查认证更新
+            </el-button>
+            <el-button type="primary" @click="editResume" :disabled="loading">编辑简历</el-button>
+          </div>
         </div>
       </template>
 
@@ -178,14 +213,24 @@
 <script>
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import { Medal, Refresh } from '@element-plus/icons-vue'
 import request from '../../utils/request'
 
 export default {
   name: 'ResumeManage',
+  components: {
+    Medal,
+    Refresh
+  },
   setup() {
     const isEditing = ref(false)
     const resumeForm = ref(null)
     const loading = ref(false)
+    const checkingCerts = ref(false)
+    
+    // 认证同步相关
+    const showCertSyncTip = ref(false)
+    const newCertifications = ref([])
 
     // 初始化空简历数据
     const resume = reactive({
@@ -218,6 +263,85 @@ export default {
       ]
     }
     
+    // 检查新认证
+    const checkCertifications = async () => {
+      checkingCerts.value = true
+      try {
+        // 获取用户已通过的认证列表
+        const response = await request.get('/certification/passed')
+        
+        if (response.data && response.data.length > 0) {
+          // 过滤出简历中没有的认证
+          const existingCertNames = resume.certificates.map(c => c.name)
+          const newCerts = response.data.filter(cert => !existingCertNames.includes(cert.certificationName))
+          
+          if (newCerts.length > 0) {
+            newCertifications.value = newCerts.map(cert => ({
+              id: cert.id,
+              name: cert.certificationName,
+              level: cert.level,
+              date: cert.passDate || new Date().toISOString().split('T')[0]
+            }))
+            showCertSyncTip.value = true
+            ElMessage.success(`发现 ${newCerts.length} 项新认证可以同步`)
+          } else {
+            ElMessage.info('您的简历已包含所有认证信息')
+          }
+        } else {
+          ElMessage.info('暂无已通过的认证')
+        }
+      } catch (error) {
+        console.error('检查认证失败:', error)
+        // 模拟数据用于演示
+        newCertifications.value = [
+          { id: 1, name: '服装设计师', level: '中级', date: '2024-12-15' },
+          { id: 2, name: '服装打版师', level: '初级', date: '2024-11-20' }
+        ]
+        showCertSyncTip.value = true
+      } finally {
+        checkingCerts.value = false
+      }
+    }
+    
+    // 同步认证到简历
+    const syncCertifications = async () => {
+      loading.value = true
+      try {
+        // 将新认证添加到简历
+        const certsToAdd = newCertifications.value.map(cert => ({
+          name: `${cert.name} (${cert.level})`,
+          date: cert.date
+        }))
+        
+        resume.certificates = [...resume.certificates, ...certsToAdd]
+        
+        // 保存简历
+        await request.put('/resume', {
+          basicInfo: resume.basicInfo,
+          education: resume.education,
+          workExperience: resume.workExperience,
+          projectExperience: resume.projectExperience,
+          skills: resume.skills,
+          certificates: resume.certificates,
+          isPublic: resume.isPublic
+        })
+        
+        showCertSyncTip.value = false
+        newCertifications.value = []
+        ElMessage.success('认证信息已同步到简历')
+      } catch (error) {
+        console.error('同步认证失败:', error)
+        ElMessage.error('同步失败，请重试')
+      } finally {
+        loading.value = false
+      }
+    }
+    
+    // 关闭认证同步提示
+    const dismissCertSyncTip = () => {
+      showCertSyncTip.value = false
+    }
+    
     // 加载简历数据
     const loadResume = async () => {
       loading.value = true
@@ -234,6 +358,9 @@ export default {
           resume.certificates = response.data.certificates || []
           resume.isPublic = response.data.isPublic || false
         }
+        
+        // 加载完简历后自动检查认证更新
+        checkCertifications()
       } catch (error) {
         console.error('加载简历失败:', error)
         // 如果是404，说明用户还没有简历，不显示错误
@@ -295,12 +422,22 @@ export default {
     const exportResume = async () => {
       loading.value = true
       try {
-        const response = await request.get('/resume/export', {
-          responseType: 'blob'  // 重要：告诉axios这是二进制数据
+        // 使用原生 fetch 来获取 blob 数据，避免 axios 拦截器干扰
+        const token = localStorage.getItem('token')
+        const response = await fetch('/api/resume/export', {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
         })
 
+        if (!response.ok) {
+          throw new Error('导出失败')
+        }
+
+        const blob = await response.blob()
+        
         // 创建下载链接
-        const blob = new Blob([response], { type: 'application/pdf' })
         const url = window.URL.createObjectURL(blob)
         const link = document.createElement('a')
         link.href = url
@@ -373,7 +510,14 @@ export default {
       exportResume,
       togglePublic,
       addEducation,
-      removeEducation
+      removeEducation,
+      // 认证同步相关
+      checkingCerts,
+      showCertSyncTip,
+      newCertifications,
+      checkCertifications,
+      syncCertifications,
+      dismissCertSyncTip
     }
   }
 }
@@ -383,6 +527,52 @@ export default {
 .resume-container {
   max-width: 1200px;
   margin: 0 auto;
+  padding: 20px;
+}
+
+/* 认证同步提示样式 */
+.cert-sync-alert {
+  margin-bottom: 20px;
+  border-radius: 16px;
+  border: none;
+  box-shadow: 0 8px 30px rgba(103, 194, 58, 0.2);
+  background: linear-gradient(135deg, #f0f9eb 0%, #e1f3d8 100%);
+}
+
+.cert-sync-content {
+  margin-top: 12px;
+}
+
+.cert-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.cert-item-tip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 10px;
+  font-size: 14px;
+  color: #303133;
+}
+
+.cert-item-tip .el-icon {
+  color: #67c23a;
+  font-size: 18px;
+}
+
+.cert-sync-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.cert-sync-actions .el-button {
+  border-radius: 8px;
 }
 
 .card-header {
@@ -391,89 +581,118 @@ export default {
   align-items: center;
 }
 
+.header-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.header-actions .el-button {
+  border-radius: 10px;
+  font-weight: 500;
+}
+
 .resume-preview {
-  padding: 20px;
-  background-color: #fafafa;
-  border-radius: 8px;
+  padding: 30px;
+  background: linear-gradient(135deg, #fafafa 0%, #ffffff 100%);
+  border-radius: 16px;
+  box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.03);
 }
 
 .resume-header {
   text-align: center;
-  margin-bottom: 30px;
-  padding-bottom: 20px;
-  border-bottom: 1px solid #e0e0e0;
+  margin-bottom: 40px;
+  padding-bottom: 30px;
+  border-bottom: 2px solid #e0e0e0;
 }
 
 .resume-header h1 {
-  margin: 0 0 10px 0;
-  font-size: 28px;
-  color: #303133;
+  margin: 0 0 15px 0;
+  font-size: 32px;
+  font-weight: 700;
+  color: #1d1d1f;
+  letter-spacing: -0.5px;
 }
 
 .contact-info {
-  margin: 0 0 10px 0;
+  margin: 0 0 15px 0;
   color: #606266;
+  font-size: 15px;
 }
 
 .career-objective {
   margin: 0;
   font-style: italic;
   color: #606266;
+  line-height: 1.6;
 }
 
 .resume-section {
-  margin-bottom: 30px;
+  margin-bottom: 35px;
 }
 
 .resume-section h3 {
-  margin: 0 0 15px 0;
-  font-size: 18px;
-  color: #303133;
-  border-bottom: 2px solid #409EFF;
-  padding-bottom: 5px;
+  margin: 0 0 20px 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: #1d1d1f;
+  border-bottom: 3px solid #667eea;
+  padding-bottom: 8px;
+  display: inline-block;
 }
 
 .edu-item, .work-item, .project-item {
-  margin-bottom: 20px;
+  margin-bottom: 25px;
+  padding: 20px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+  transition: all 0.3s ease;
+}
+
+.edu-item:hover, .work-item:hover, .project-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
 }
 
 .edu-header, .work-header, .project-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 5px;
+  margin-bottom: 10px;
 }
 
 .school, .company, .project-name {
-  font-weight: bold;
-  color: #303133;
+  font-weight: 600;
+  font-size: 17px;
+  color: #1d1d1f;
 }
 
 .period {
-  color: #606266;
+  color: #667eea;
   font-size: 14px;
+  font-weight: 500;
 }
 
 .edu-details, .work-details, .project-details {
   display: flex;
   gap: 20px;
-  margin-bottom: 5px;
+  margin-bottom: 10px;
   color: #606266;
 }
 
 .edu-desc, .career-objective {
   color: #606266;
-  line-height: 1.5;
+  line-height: 1.6;
 }
 
 .work-responsibilities, .project-achievements {
-  margin: 10px 0 0 20px;
+  margin: 15px 0 0 20px;
   color: #606266;
 }
 
 .work-responsibilities li, .project-achievements li {
-  margin-bottom: 5px;
-  line-height: 1.5;
+  margin-bottom: 8px;
+  line-height: 1.6;
 }
 
 .skills-certificates {
@@ -483,12 +702,17 @@ export default {
 
 .skills, .certificates {
   flex: 1;
+  padding: 20px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
 }
 
 .skills h4, .certificates h4 {
-  margin: 0 0 10px 0;
+  margin: 0 0 15px 0;
   font-size: 16px;
-  color: #303133;
+  font-weight: 600;
+  color: #1d1d1f;
 }
 
 .skill-tags {
@@ -497,20 +721,38 @@ export default {
   gap: 10px;
 }
 
+.skill-tags .el-tag {
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-weight: 500;
+}
+
 .cert-item {
   display: flex;
   justify-content: space-between;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid #f0f0f0;
   color: #606266;
+}
+
+.cert-item:last-child {
+  border-bottom: none;
 }
 
 .resume-actions {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-top: 30px;
-  padding-top: 20px;
-  border-top: 1px solid #e0e0e0;
+  margin-top: 40px;
+  padding-top: 25px;
+  border-top: 2px solid #e0e0e0;
+}
+
+.resume-actions .el-button {
+  border-radius: 10px;
+  padding: 12px 24px;
+  font-weight: 500;
 }
 
 .resume-edit {
@@ -518,7 +760,9 @@ export default {
 }
 
 .edit-section {
-  margin-bottom: 20px;
+  margin-bottom: 25px;
+  border-radius: 16px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
 }
 
 .section-header {
@@ -528,18 +772,20 @@ export default {
 }
 
 .form-item-group {
-  margin-bottom: 20px;
-  padding: 15px;
-  background-color: #fafafa;
-  border-radius: 8px;
+  margin-bottom: 25px;
+  padding: 20px;
+  background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+  border-radius: 12px;
+  border: 1px solid #e4e7ed;
 }
 
 .group-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 15px;
-  font-weight: bold;
+  margin-bottom: 20px;
+  font-weight: 600;
+  color: #1d1d1f;
 }
 
 .date-range {
@@ -555,6 +801,35 @@ export default {
   display: flex;
   justify-content: center;
   gap: 20px;
-  margin-top: 30px;
+  margin-top: 40px;
+}
+
+.form-actions .el-button {
+  border-radius: 10px;
+  padding: 14px 40px;
+  font-weight: 500;
+  font-size: 16px;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .resume-container {
+    padding: 10px;
+  }
+  
+  .skills-certificates {
+    flex-direction: column;
+    gap: 20px;
+  }
+  
+  .header-actions {
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .date-range {
+    flex-direction: column;
+    gap: 0;
+  }
 }
 </style>

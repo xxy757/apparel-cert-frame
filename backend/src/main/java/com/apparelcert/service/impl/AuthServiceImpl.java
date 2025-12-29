@@ -6,13 +6,12 @@ import com.apparelcert.mapper.UserEnterpriseMapper;
 import com.apparelcert.mapper.UserPersonalMapper;
 import com.apparelcert.service.AuthService;
 import com.apparelcert.utils.JwtUtil;
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -42,7 +41,7 @@ public class AuthServiceImpl implements AuthService {
         UserPersonal existingUser = userPersonalMapper.findByUsername(userPersonal.getUsername());
         if (existingUser != null) {
             result.put("success", false);
-            result.put("message", "Username already exists");
+            result.put("message", "用户名已存在");
             return result;
         }
 
@@ -51,7 +50,7 @@ public class AuthServiceImpl implements AuthService {
             UserPersonal existingEmail = userPersonalMapper.findByEmail(userPersonal.getEmail());
             if (existingEmail != null) {
                 result.put("success", false);
-                result.put("message", "Email already exists");
+                result.put("message", "邮箱已被注册");
                 return result;
             }
         }
@@ -67,11 +66,11 @@ public class AuthServiceImpl implements AuthService {
         int inserted = userPersonalMapper.insert(userPersonal);
         if (inserted > 0) {
             result.put("success", true);
-            result.put("message", "Registration successful");
+            result.put("message", "注册成功");
             result.put("userId", userPersonal.getId());
         } else {
             result.put("success", false);
-            result.put("message", "Registration failed");
+            result.put("message", "注册失败，请稍后重试");
         }
 
         return result;
@@ -86,7 +85,7 @@ public class AuthServiceImpl implements AuthService {
         UserEnterprise existingUser = userEnterpriseMapper.findByUsername(userEnterprise.getUsername());
         if (existingUser != null) {
             result.put("success", false);
-            result.put("message", "Username already exists");
+            result.put("message", "用户名已存在");
             return result;
         }
 
@@ -95,7 +94,7 @@ public class AuthServiceImpl implements AuthService {
             UserEnterprise existingEmail = userEnterpriseMapper.findByEmail(userEnterprise.getEmail());
             if (existingEmail != null) {
                 result.put("success", false);
-                result.put("message", "Email already exists");
+                result.put("message", "邮箱已被注册");
                 return result;
             }
         }
@@ -111,11 +110,11 @@ public class AuthServiceImpl implements AuthService {
         int inserted = userEnterpriseMapper.insert(userEnterprise);
         if (inserted > 0) {
             result.put("success", true);
-            result.put("message", "Registration successful, pending review");
+            result.put("message", "注册成功，请等待管理员审核");
             result.put("userId", userEnterprise.getId());
         } else {
             result.put("success", false);
-            result.put("message", "Registration failed");
+            result.put("message", "注册失败，请稍后重试");
         }
 
         return result;
@@ -129,14 +128,21 @@ public class AuthServiceImpl implements AuthService {
         UserPersonal user = userPersonalMapper.findByUsername(username);
         if (user == null) {
             result.put("success", false);
-            result.put("message", "Username does not exist");
+            result.put("message", "用户不存在");
+            return result;
+        }
+
+        // 检查用户状态
+        if (user.getStatus() != null && user.getStatus() == 0) {
+            result.put("success", false);
+            result.put("message", "账户已被禁用");
             return result;
         }
 
         // 验证密码
         if (!passwordEncoder.matches(password, user.getPassword())) {
             result.put("success", false);
-            result.put("message", "Incorrect password");
+            result.put("message", "密码错误");
             return result;
         }
 
@@ -146,7 +152,7 @@ public class AuthServiceImpl implements AuthService {
         result.put("token", token);
         result.put("userId", user.getId());
         result.put("userType", 1);
-        result.put("message", "Login successful");
+        result.put("message", "登录成功");
         result.put("name", user.getName());
         result.put("email", user.getEmail());
         result.put("avatar", user.getAvatar());
@@ -162,25 +168,25 @@ public class AuthServiceImpl implements AuthService {
         UserEnterprise user = userEnterpriseMapper.findByUsername(username);
         if (user == null) {
             result.put("success", false);
-            result.put("message", "Username does not exist");
+            result.put("message", "用户不存在");
             return result;
         }
 
         // 验证密码
         if (!passwordEncoder.matches(password, user.getPassword())) {
             result.put("success", false);
-            result.put("message", "Incorrect password");
+            result.put("message", "密码错误");
             return result;
         }
 
         // 检查审核状态
         if (user.getAuthStatus() == 0) {
             result.put("success", false);
-            result.put("message", "Account is pending review");
+            result.put("message", "账户正在审核中，请耐心等待");
             return result;
         } else if (user.getAuthStatus() == 2) {
             result.put("success", false);
-            result.put("message", "Account review rejected");
+            result.put("message", "账户审核未通过，请联系管理员");
             return result;
         }
 
@@ -190,7 +196,7 @@ public class AuthServiceImpl implements AuthService {
         result.put("token", token);
         result.put("userId", user.getId());
         result.put("userType", 2);
-        result.put("message", "Login successful");
+        result.put("message", "登录成功");
         result.put("companyName", user.getCompanyName());
         result.put("contactPerson", user.getContactPerson());
         result.put("email", user.getEmail());
@@ -247,6 +253,110 @@ public class AuthServiceImpl implements AuthService {
             return userEnterpriseMapper.updateById(enterpriseUser) > 0;
         }
 
+        return false;
+    }
+
+    @Override
+    public Map<String, Object> getCurrentUser(String token) {
+        Map<String, Object> result = new HashMap<>();
+
+        // 验证token
+        if (!jwtUtil.validateToken(token)) {
+            result.put("success", false);
+            result.put("message", "登录已过期，请重新登录");
+            return result;
+        }
+
+        // 从token中获取用户信息
+        Long userId = jwtUtil.getUserIdFromToken(token);
+        Integer userType = jwtUtil.getUserTypeFromToken(token);
+
+        if (userId == null || userType == null) {
+            result.put("success", false);
+            result.put("message", "认证信息无效");
+            return result;
+        }
+
+        result.put("success", true);
+        result.put("userId", userId);
+        result.put("userType", userType);
+
+        if (userType == 1) {
+            // 个人用户
+            UserPersonal user = userPersonalMapper.selectById(userId);
+            if (user != null) {
+                result.put("username", user.getUsername());
+                result.put("name", user.getName());
+                result.put("email", user.getEmail());
+                result.put("phone", user.getPhone());
+                result.put("avatar", user.getAvatar());
+                result.put("careerDirection", user.getCareerDirection());
+            } else {
+                result.put("success", false);
+                result.put("message", "用户不存在");
+            }
+        } else if (userType == 2) {
+            // 企业用户
+            UserEnterprise user = userEnterpriseMapper.selectById(userId);
+            if (user != null) {
+                result.put("username", user.getUsername());
+                result.put("companyName", user.getCompanyName());
+                result.put("contactPerson", user.getContactPerson());
+                result.put("email", user.getEmail());
+                result.put("contactPhone", user.getContactPhone());
+                result.put("logo", user.getLogo());
+                result.put("authStatus", user.getAuthStatus());
+            } else {
+                result.put("success", false);
+                result.put("message", "用户不存在");
+            }
+        }
+
+        return result;
+    }
+    
+    @Override
+    public boolean checkEmailExists(String email, Integer userType) {
+        if (userType == 1) {
+            UserPersonal user = userPersonalMapper.findByEmail(email);
+            return user != null;
+        } else if (userType == 2) {
+            UserEnterprise user = userEnterpriseMapper.findByEmail(email);
+            return user != null;
+        }
+        return false;
+    }
+    
+    @Override
+    public boolean checkUsernameExists(String username, Integer userType) {
+        if (userType == 1) {
+            UserPersonal user = userPersonalMapper.findByUsername(username);
+            return user != null;
+        } else if (userType == 2) {
+            UserEnterprise user = userEnterpriseMapper.findByUsername(username);
+            return user != null;
+        }
+        return false;
+    }
+    
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean resetPasswordByEmail(String email, String newPassword, Integer userType) {
+        String encodedPassword = passwordEncoder.encode(newPassword);
+        
+        if (userType == 1) {
+            UserPersonal user = userPersonalMapper.findByEmail(email);
+            if (user != null) {
+                user.setPassword(encodedPassword);
+                return userPersonalMapper.updateById(user) > 0;
+            }
+        } else if (userType == 2) {
+            UserEnterprise user = userEnterpriseMapper.findByEmail(email);
+            if (user != null) {
+                user.setPassword(encodedPassword);
+                return userEnterpriseMapper.updateById(user) > 0;
+            }
+        }
         return false;
     }
 }

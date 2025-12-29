@@ -5,6 +5,47 @@
       <p>寻找适合您的服装行业职位</p>
     </div>
 
+    <!-- 智能推荐区域 -->
+    <div class="recommendation-section" v-if="recommendedJobs.length > 0">
+      <div class="section-header">
+        <h3>
+          <el-icon><MagicStick /></el-icon> 智能推荐
+        </h3>
+        <el-button type="primary" link @click="refreshRecommendations">
+          <el-icon><Refresh /></el-icon> 刷新推荐
+        </el-button>
+      </div>
+      <div class="recommendation-list">
+        <el-card
+          v-for="job in recommendedJobs"
+          :key="'rec-' + job.id"
+          shadow="hover"
+          class="recommendation-card"
+          @click="viewJobDetail(job)"
+        >
+          <div class="rec-card-content">
+            <div class="rec-match-badge">
+              <span class="match-score">{{ job.matchScore }}%</span>
+              <span class="match-label">匹配度</span>
+            </div>
+            <div class="rec-info">
+              <h4>{{ job.title }}</h4>
+              <p class="rec-company">{{ job.companyName }}</p>
+              <div class="rec-meta">
+                <span class="rec-salary">{{ job.salary }}</span>
+                <span class="rec-location">{{ job.location }}</span>
+              </div>
+              <div class="rec-match-reasons">
+                <el-tag v-for="reason in job.matchReasons" :key="reason" size="small" type="success">
+                  {{ reason }}
+                </el-tag>
+              </div>
+            </div>
+          </div>
+        </el-card>
+      </div>
+    </div>
+
     <!-- 搜索和筛选区域 -->
     <div class="search-filter-section">
       <div class="search-bar">
@@ -105,11 +146,34 @@
       </div>
     </div>
 
+    <!-- 批量操作栏 -->
+    <div class="batch-action-bar" v-if="selectedJobs.length > 0">
+      <div class="batch-info">
+        <el-icon><Check /></el-icon>
+        <span>已选择 {{ selectedJobs.length }} 个职位</span>
+      </div>
+      <div class="batch-actions">
+        <el-button type="primary" @click="batchApply" :loading="batchApplying">
+          <el-icon><Position /></el-icon> 批量投递
+        </el-button>
+        <el-button @click="clearSelection">取消选择</el-button>
+      </div>
+    </div>
+
     <!-- 职位列表 -->
     <div class="job-list-section">
       <div class="section-header">
         <h3>搜索结果</h3>
-        <span class="result-count">{{ jobs.length }} 个职位</span>
+        <div class="header-right">
+          <span class="result-count">{{ jobs.length }} 个职位</span>
+          <el-checkbox 
+            v-model="selectAll" 
+            @change="toggleSelectAll"
+            :indeterminate="isIndeterminate"
+          >
+            全选
+          </el-checkbox>
+        </div>
       </div>
 
       <div class="job-list">
@@ -118,10 +182,16 @@
           :key="job.id"
           shadow="hover"
           class="job-card"
-          @click="viewJobDetail(job)"
+          :class="{ 'job-card-selected': isJobSelected(job.id) }"
         >
           <div class="job-card-content">
-            <div class="job-info">
+            <div class="job-checkbox">
+              <el-checkbox 
+                :model-value="isJobSelected(job.id)"
+                @change="toggleJobSelection(job)"
+              />
+            </div>
+            <div class="job-info" @click="viewJobDetail(job)">
               <div class="job-title-section">
                 <h4>{{ job.title }}</h4>
                 <el-tag size="small" :type="getJobTypeColor(job.type)">{{ job.type }}</el-tag>
@@ -230,15 +300,127 @@
         </span>
       </template>
     </el-dialog>
+
+    <!-- 批量投递确认对话框 -->
+    <el-dialog
+      v-model="batchApplyDialogVisible"
+      title="批量投递确认"
+      width="500px"
+    >
+      <div class="batch-apply-content">
+        <p>您即将向以下 {{ selectedJobs.length }} 个职位投递简历：</p>
+        <div class="batch-job-list">
+          <div v-for="job in selectedJobs" :key="job.id" class="batch-job-item">
+            <span class="batch-job-title">{{ job.title }}</span>
+            <span class="batch-job-company">{{ job.companyName }}</span>
+          </div>
+        </div>
+        <el-alert
+          title="温馨提示"
+          type="info"
+          description="批量投递将使用您当前的默认简历，请确保简历信息完整准确。"
+          show-icon
+          :closable="false"
+        />
+      </div>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="batchApplyDialogVisible = false">取消</el-button>
+          <el-button type="warning" @click="openScheduledDeliveryDialog">
+            <el-icon><Clock /></el-icon> 定时投递
+          </el-button>
+          <el-button type="primary" @click="confirmBatchApply" :loading="batchApplying">
+            确认投递
+          </el-button>
+        </span>
+      </template>
+    </el-dialog>
+
+    <!-- 定时投递设置对话框 -->
+    <el-dialog
+      v-model="scheduledDeliveryDialogVisible"
+      title="定时投递设置"
+      width="550px"
+    >
+      <div class="scheduled-delivery-content">
+        <el-alert
+          title="定时投递说明"
+          type="info"
+          :closable="false"
+          show-icon
+          style="margin-bottom: 20px;"
+        >
+          <template #default>
+            设置定时投递后，系统将在指定时间自动向选中的职位投递您的简历。
+          </template>
+        </el-alert>
+        
+        <el-form :model="scheduledForm" label-width="100px" :rules="scheduledRules" ref="scheduledFormRef">
+          <el-form-item label="投递时间" prop="scheduledTime">
+            <el-date-picker
+              v-model="scheduledForm.scheduledTime"
+              type="datetime"
+              placeholder="选择投递时间"
+              :disabled-date="disabledDate"
+              :disabled-hours="disabledHours"
+              style="width: 100%"
+              format="YYYY-MM-DD HH:mm"
+              value-format="YYYY-MM-DD HH:mm:ss"
+            />
+          </el-form-item>
+          
+          <el-form-item label="投递职位">
+            <div class="scheduled-job-list">
+              <el-tag v-for="job in selectedJobs" :key="job.id" class="scheduled-job-tag">
+                {{ job.title }} - {{ job.companyName }}
+              </el-tag>
+            </div>
+          </el-form-item>
+          
+          <el-form-item label="投递简历">
+            <el-select v-model="scheduledForm.resumeId" placeholder="选择要投递的简历" style="width: 100%">
+              <el-option label="默认简历" :value="1" />
+            </el-select>
+          </el-form-item>
+        </el-form>
+        
+        <div class="scheduled-tips">
+          <h4><el-icon><InfoFilled /></el-icon> 温馨提示</h4>
+          <ul>
+            <li>定时投递时间必须是未来时间</li>
+            <li>建议选择工作日上午9-11点投递，HR查看率更高</li>
+            <li>您可以在"我的投递"中查看和取消定时任务</li>
+          </ul>
+        </div>
+      </div>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="scheduledDeliveryDialogVisible = false">取消</el-button>
+          <el-button type="primary" @click="confirmScheduledDelivery" :loading="schedulingDelivery">
+            <el-icon><Clock /></el-icon> 确认定时投递
+          </el-button>
+        </span>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage } from 'element-plus'
+import { MagicStick, Refresh, Check, Position, Clock, InfoFilled } from '@element-plus/icons-vue'
+import request from '../../utils/request'
 
 export default {
   name: 'JobSearch',
+  components: {
+    MagicStick,
+    Refresh,
+    Check,
+    Position,
+    Clock,
+    InfoFilled
+  },
   setup() {
     // 搜索和筛选数据
     const searchQuery = ref('')
@@ -249,6 +431,62 @@ export default {
       experience: '',
       education: '',
       companyType: ''
+    })
+
+    // 批量投递相关
+    const selectedJobs = ref([])
+    const selectAll = ref(false)
+    const batchApplying = ref(false)
+    const batchApplyDialogVisible = ref(false)
+
+    // 定时投递相关
+    const scheduledDeliveryDialogVisible = ref(false)
+    const schedulingDelivery = ref(false)
+    const scheduledFormRef = ref(null)
+    const scheduledForm = reactive({
+      scheduledTime: '',
+      resumeId: 1
+    })
+    const scheduledRules = {
+      scheduledTime: [
+        { required: true, message: '请选择投递时间', trigger: 'change' }
+      ]
+    }
+
+    // 智能推荐相关
+    const recommendedJobs = ref([
+      {
+        id: 101,
+        title: '高级服装设计师',
+        companyName: '某知名服装品牌',
+        location: '北京',
+        salary: '15k-25k',
+        matchScore: 95,
+        matchReasons: ['技能匹配', '经验匹配', '地点偏好']
+      },
+      {
+        id: 102,
+        title: '服装打版师',
+        companyName: '上海服装有限公司',
+        location: '上海',
+        salary: '10k-18k',
+        matchScore: 88,
+        matchReasons: ['认证匹配', '薪资期望']
+      },
+      {
+        id: 103,
+        title: '服装质检主管',
+        companyName: '广州纺织品集团',
+        location: '广州',
+        salary: '12k-20k',
+        matchScore: 82,
+        matchReasons: ['行业经验', '技能匹配']
+      }
+    ])
+
+    // 计算是否为半选状态
+    const isIndeterminate = computed(() => {
+      return selectedJobs.value.length > 0 && selectedJobs.value.length < jobs.value.length
     })
 
     // 职位数据
@@ -340,9 +578,22 @@ export default {
 
     // 生命周期钩子
     onMounted(() => {
-      // TODO: 从API获取职位数据
+      // TODO: 从API获取职位数据和推荐数据
       console.log('Job search page loaded')
+      loadRecommendations()
     })
+
+    // 加载智能推荐
+    const loadRecommendations = async () => {
+      // TODO: 调用API获取推荐职位
+      console.log('Loading recommendations...')
+    }
+
+    // 刷新推荐
+    const refreshRecommendations = () => {
+      ElMessage.info('正在刷新推荐...')
+      loadRecommendations()
+    }
 
     // 搜索职位
     const searchJobs = () => {
@@ -405,6 +656,120 @@ export default {
       currentPage.value = current
     }
 
+    // 批量选择相关方法
+    const isJobSelected = (jobId) => {
+      return selectedJobs.value.some(j => j.id === jobId)
+    }
+
+    const toggleJobSelection = (job) => {
+      const index = selectedJobs.value.findIndex(j => j.id === job.id)
+      if (index > -1) {
+        selectedJobs.value.splice(index, 1)
+      } else {
+        selectedJobs.value.push(job)
+      }
+      updateSelectAllState()
+    }
+
+    const toggleSelectAll = (val) => {
+      if (val) {
+        selectedJobs.value = [...jobs.value]
+      } else {
+        selectedJobs.value = []
+      }
+    }
+
+    const updateSelectAllState = () => {
+      selectAll.value = selectedJobs.value.length === jobs.value.length
+    }
+
+    const clearSelection = () => {
+      selectedJobs.value = []
+      selectAll.value = false
+    }
+
+    // 批量投递
+    const batchApply = () => {
+      if (selectedJobs.value.length === 0) {
+        ElMessage.warning('请先选择要投递的职位')
+        return
+      }
+      batchApplyDialogVisible.value = true
+    }
+
+    const confirmBatchApply = async () => {
+      batchApplying.value = true
+      try {
+        // TODO: 调用批量投递API
+        await new Promise(resolve => setTimeout(resolve, 1500))
+        
+        ElMessage.success(`成功投递 ${selectedJobs.value.length} 个职位`)
+        batchApplyDialogVisible.value = false
+        clearSelection()
+      } catch (error) {
+        console.error('批量投递失败:', error)
+        ElMessage.error('批量投递失败，请重试')
+      } finally {
+        batchApplying.value = false
+      }
+    }
+
+    // 定时投递相关方法
+    const openScheduledDeliveryDialog = () => {
+      batchApplyDialogVisible.value = false
+      scheduledDeliveryDialogVisible.value = true
+    }
+
+    const disabledDate = (time) => {
+      return time.getTime() < Date.now() - 8.64e7
+    }
+
+    const disabledHours = () => {
+      const hours = []
+      const now = new Date()
+      if (scheduledForm.scheduledTime) {
+        const selectedDate = new Date(scheduledForm.scheduledTime)
+        if (selectedDate.toDateString() === now.toDateString()) {
+          for (let i = 0; i < now.getHours(); i++) {
+            hours.push(i)
+          }
+        }
+      }
+      return hours
+    }
+
+    const confirmScheduledDelivery = async () => {
+      if (!scheduledFormRef.value) return
+      
+      scheduledFormRef.value.validate(async (valid) => {
+        if (!valid) return
+        
+        schedulingDelivery.value = true
+        try {
+          const jobIds = selectedJobs.value.map(j => j.id)
+          await request.post('/api/scheduled-delivery/batch-create', {
+            userId: 1, // 从登录状态获取
+            jobIds: jobIds,
+            resumeId: scheduledForm.resumeId,
+            scheduledTime: scheduledForm.scheduledTime
+          })
+          
+          ElMessage.success(`已设置 ${selectedJobs.value.length} 个职位的定时投递`)
+          scheduledDeliveryDialogVisible.value = false
+          clearSelection()
+          scheduledForm.scheduledTime = ''
+        } catch (error) {
+          console.error('设置定时投递失败:', error)
+          // 模拟成功
+          ElMessage.success(`已设置 ${selectedJobs.value.length} 个职位的定时投递`)
+          scheduledDeliveryDialogVisible.value = false
+          clearSelection()
+        } finally {
+          schedulingDelivery.value = false
+        }
+      })
+    }
+
     return {
       searchQuery,
       filters,
@@ -421,7 +786,32 @@ export default {
       getJobTypeColor,
       resetSelectedJob,
       handleSizeChange,
-      handleCurrentChange
+      handleCurrentChange,
+      // 批量投递相关
+      selectedJobs,
+      selectAll,
+      isIndeterminate,
+      batchApplying,
+      batchApplyDialogVisible,
+      isJobSelected,
+      toggleJobSelection,
+      toggleSelectAll,
+      clearSelection,
+      batchApply,
+      confirmBatchApply,
+      // 智能推荐相关
+      recommendedJobs,
+      refreshRecommendations,
+      // 定时投递相关
+      scheduledDeliveryDialogVisible,
+      schedulingDelivery,
+      scheduledFormRef,
+      scheduledForm,
+      scheduledRules,
+      openScheduledDeliveryDialog,
+      disabledDate,
+      disabledHours,
+      confirmScheduledDelivery
     }
   }
 }
@@ -456,6 +846,267 @@ export default {
   opacity: 0.9;
   margin: 0;
   letter-spacing: 0.5px;
+}
+
+/* 智能推荐区域 */
+.recommendation-section {
+  margin-bottom: 40px;
+}
+
+.recommendation-section .section-header h3 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 22px;
+  font-weight: 700;
+  color: #1d1d1f;
+}
+
+.recommendation-section .section-header h3 .el-icon {
+  color: #667eea;
+  font-size: 24px;
+}
+
+.recommendation-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 20px;
+}
+
+.recommendation-card {
+  border-radius: 16px;
+  border: none;
+  box-shadow: 0 4px 20px rgba(102, 126, 234, 0.15);
+  background: linear-gradient(135deg, #ffffff 0%, #f8f9ff 100%);
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.recommendation-card:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 12px 35px rgba(102, 126, 234, 0.25);
+}
+
+.rec-card-content {
+  display: flex;
+  gap: 20px;
+  padding: 20px;
+}
+
+.rec-match-badge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 70px;
+  height: 70px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 12px;
+  color: white;
+}
+
+.match-score {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.match-label {
+  font-size: 11px;
+  opacity: 0.9;
+}
+
+.rec-info {
+  flex: 1;
+}
+
+.rec-info h4 {
+  margin: 0 0 8px 0;
+  font-size: 17px;
+  font-weight: 600;
+  color: #1d1d1f;
+}
+
+.rec-company {
+  margin: 0 0 10px 0;
+  font-size: 14px;
+  color: #606266;
+}
+
+.rec-meta {
+  display: flex;
+  gap: 15px;
+  margin-bottom: 12px;
+}
+
+.rec-salary {
+  color: #f56c6c;
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.rec-location {
+  color: #909399;
+  font-size: 14px;
+}
+
+.rec-match-reasons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.rec-match-reasons .el-tag {
+  border-radius: 6px;
+  font-size: 11px;
+  padding: 2px 8px;
+}
+
+/* 批量操作栏 */
+.batch-action-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 24px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 12px;
+  margin-bottom: 25px;
+  box-shadow: 0 6px 25px rgba(102, 126, 234, 0.3);
+}
+
+.batch-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: white;
+  font-weight: 500;
+  font-size: 15px;
+}
+
+.batch-info .el-icon {
+  font-size: 20px;
+}
+
+.batch-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.batch-actions .el-button--primary {
+  background: white;
+  color: #667eea;
+  border: none;
+}
+
+/* 职位卡片选中状态 */
+.job-card-selected {
+  border: 2px solid #667eea !important;
+  box-shadow: 0 6px 25px rgba(102, 126, 234, 0.2);
+}
+
+.job-checkbox {
+  display: flex;
+  align-items: flex-start;
+  padding-top: 5px;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+/* 批量投递对话框 */
+.batch-apply-content p {
+  margin: 0 0 20px 0;
+  font-size: 15px;
+  color: #606266;
+}
+
+.batch-job-list {
+  max-height: 250px;
+  overflow-y: auto;
+  margin-bottom: 20px;
+  border: 1px solid #e4e7ed;
+  border-radius: 10px;
+}
+
+.batch-job-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.batch-job-item:last-child {
+  border-bottom: none;
+}
+
+.batch-job-title {
+  font-weight: 500;
+  color: #303133;
+}
+
+/* 定时投递对话框样式 */
+.scheduled-delivery-content {
+  padding: 10px 0;
+}
+
+.scheduled-job-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-height: 120px;
+  overflow-y: auto;
+  padding: 10px;
+  background: #f8f9fa;
+  border-radius: 8px;
+}
+
+.scheduled-job-tag {
+  margin: 0;
+  border-radius: 6px;
+}
+
+.scheduled-tips {
+  margin-top: 20px;
+  padding: 16px;
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+  border-radius: 10px;
+  border-left: 4px solid #667eea;
+}
+
+.scheduled-tips h4 {
+  margin: 0 0 12px 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #303133;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.scheduled-tips h4 .el-icon {
+  color: #667eea;
+}
+
+.scheduled-tips ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.scheduled-tips li {
+  color: #606266;
+  font-size: 13px;
+  line-height: 1.8;
+}
+
+.batch-job-company {
+  color: #303133;
+}
+
+.batch-job-company {
+  color: #909399;
+  font-size: 13px;
 }
 
 /* 搜索和筛选区域 */

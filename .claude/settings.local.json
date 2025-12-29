@@ -3,7 +3,9 @@
     "allow": [
       "Bash(jar:*)",
       "Bash(unzip:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(powershell:*)",
+      "Bash(cmd:*)"
     ]
   }
 }

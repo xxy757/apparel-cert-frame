@@ -39,7 +39,10 @@ request.interceptors.response.use(
       if (res.code === 401) {
         localStorage.removeItem('token')
         localStorage.removeItem('userType')
-        window.location.href = '/login'
+        // 不要在登录页面重定向
+        if (!window.location.pathname.includes('/login')) {
+          window.location.href = '/login'
+        }
       }
       
       return Promise.reject(new Error(res.message || '请求失败'))
@@ -52,12 +55,24 @@ request.interceptors.response.use(
     
     // 处理网络错误
     if (error.response) {
-      switch (error.response.status) {
+      const { status, data } = error.response
+      const message = data?.message || '请求失败'
+      
+      switch (status) {
+        case 304:
+          // 304 不应该作为错误处理，但如果到这里说明有问题
+          console.warn('收到304响应，可能是缓存问题')
+          break
+        case 400:
+          ElMessage.error(message)
+          break
         case 401:
-          ElMessage.error('登录已过期，请重新登录')
+          ElMessage.error(message || '认证失败')
           localStorage.removeItem('token')
           localStorage.removeItem('userType')
-          window.location.href = '/login'
+          if (!window.location.pathname.includes('/login')) {
+            window.location.href = '/login'
+          }
           break
         case 403:
           ElMessage.error('没有权限访问')
@@ -69,7 +84,7 @@ request.interceptors.response.use(
           ElMessage.error('服务器内部错误')
           break
         default:
-          ElMessage.error(error.response.data?.message || '请求失败')
+          ElMessage.error(message)
       }
     } else if (error.request) {
       ElMessage.error('网络连接失败，请检查网络')

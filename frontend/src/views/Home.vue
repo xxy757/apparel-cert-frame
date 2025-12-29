@@ -13,9 +13,34 @@
             <a href="#industry-news" class="nav-link">行业动态</a>
             <a href="#about" class="nav-link">关于我们</a>
           </nav>
-          <div class="user-actions">
+          <!-- 未登录状态 -->
+          <div class="user-actions" v-if="!isLoggedIn">
             <router-link to="/login" class="btn btn-outline">登录</router-link>
             <router-link to="/register" class="btn btn-primary">注册</router-link>
+          </div>
+          <!-- 已登录状态 -->
+          <div class="user-dropdown" v-else>
+            <el-dropdown trigger="click" @command="handleCommand">
+              <div class="user-avatar-wrapper">
+                <el-avatar :size="40" :src="userAvatar" class="user-avatar">
+                  <el-icon :size="20"><User /></el-icon>
+                </el-avatar>
+                <span class="user-name">{{ displayName }}</span>
+                <el-icon class="dropdown-icon"><ArrowDown /></el-icon>
+              </div>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="profile">
+                    <el-icon><User /></el-icon>
+                    <span>个人信息</span>
+                  </el-dropdown-item>
+                  <el-dropdown-item divided command="logout">
+                    <el-icon><SwitchButton /></el-icon>
+                    <span>退出登录</span>
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </div>
         </div>
       </div>
@@ -154,8 +179,11 @@
 </template>
 
 <script>
-import { ref, onMounted } from 'vue'
-import { User, Briefcase, Medal, Document, Star, Message, Location, Phone, ArrowRight } from '@element-plus/icons-vue'
+import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { User, Briefcase, Medal, Document, Star, Message, Location, Phone, ArrowRight, ArrowDown, SwitchButton } from '@element-plus/icons-vue'
+import request from '@/utils/request'
 
 export default {
   name: 'Home',
@@ -168,9 +196,123 @@ export default {
     Message,
     Location,
     Phone,
-    ArrowRight
+    ArrowRight,
+    ArrowDown,
+    SwitchButton
   },
   setup() {
+    const router = useRouter()
+    const userInfo = ref(null)
+    const isLoggedIn = ref(false)
+
+    // 计算显示名称
+    const displayName = computed(() => {
+      if (!userInfo.value) return ''
+      const userType = localStorage.getItem('userType')
+      if (userType === '1') {
+        return userInfo.value.name || userInfo.value.username || '用户'
+      } else if (userType === '2') {
+        return userInfo.value.companyName || userInfo.value.contactPerson || '企业用户'
+      }
+      return '用户'
+    })
+
+    // 计算头像
+    const userAvatar = computed(() => {
+      if (!userInfo.value) return ''
+      const userType = localStorage.getItem('userType')
+      if (userType === '1') {
+        return userInfo.value.avatar || ''
+      } else if (userType === '2') {
+        return userInfo.value.logo || ''
+      }
+      return ''
+    })
+
+    // 获取当前用户信息
+    const fetchCurrentUser = async () => {
+      const token = localStorage.getItem('token')
+      if (!token) {
+        isLoggedIn.value = false
+        return
+      }
+
+      try {
+        const res = await request.get('/auth/current-user')
+        if (res.success) {
+          userInfo.value = res
+          isLoggedIn.value = true
+        } else {
+          isLoggedIn.value = false
+          localStorage.removeItem('token')
+          localStorage.removeItem('userType')
+        }
+      } catch (error) {
+        console.error('获取用户信息失败:', error)
+        isLoggedIn.value = false
+      }
+    }
+
+    // 处理下拉菜单命令
+    const handleCommand = (command) => {
+      if (command === 'profile') {
+        showUserProfile()
+      } else if (command === 'logout') {
+        handleLogout()
+      }
+    }
+
+    // 显示用户信息
+    const showUserProfile = () => {
+      const userType = localStorage.getItem('userType')
+      let content = ''
+      
+      if (userType === '1' && userInfo.value) {
+        content = `
+          <div style="line-height: 2;">
+            <p><strong>用户名：</strong>${userInfo.value.username || '-'}</p>
+            <p><strong>姓名：</strong>${userInfo.value.name || '-'}</p>
+            <p><strong>邮箱：</strong>${userInfo.value.email || '-'}</p>
+            <p><strong>手机：</strong>${userInfo.value.phone || '-'}</p>
+            <p><strong>职业方向：</strong>${userInfo.value.careerDirection || '-'}</p>
+          </div>
+        `
+      } else if (userType === '2' && userInfo.value) {
+        const authStatusMap = { 0: '待审核', 1: '已认证', 2: '审核未通过' }
+        content = `
+          <div style="line-height: 2;">
+            <p><strong>用户名：</strong>${userInfo.value.username || '-'}</p>
+            <p><strong>企业名称：</strong>${userInfo.value.companyName || '-'}</p>
+            <p><strong>联系人：</strong>${userInfo.value.contactPerson || '-'}</p>
+            <p><strong>联系电话：</strong>${userInfo.value.contactPhone || '-'}</p>
+            <p><strong>邮箱：</strong>${userInfo.value.email || '-'}</p>
+            <p><strong>认证状态：</strong>${authStatusMap[userInfo.value.authStatus] || '-'}</p>
+          </div>
+        `
+      }
+
+      ElMessageBox.alert(content, '个人信息', {
+        dangerouslyUseHTMLString: true,
+        confirmButtonText: '确定'
+      })
+    }
+
+    // 退出登录
+    const handleLogout = () => {
+      ElMessageBox.confirm('确定要退出登录吗？', '提示', {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }).then(() => {
+        localStorage.removeItem('token')
+        localStorage.removeItem('userType')
+        userInfo.value = null
+        isLoggedIn.value = false
+        ElMessage.success('已退出登录')
+        router.push('/')
+      }).catch(() => {})
+    }
+
     const newsList = ref([
       {
         id: 1,
@@ -225,11 +367,19 @@ export default {
     onMounted(() => {
       // 页面加载时的初始化操作
       console.log('Home page loaded')
+      fetchCurrentUser()
     })
 
     return {
       newsList,
-      features
+      features,
+      isLoggedIn,
+      userInfo,
+      displayName,
+      userAvatar,
+      handleCommand,
+      showUserProfile,
+      handleLogout
     }
   }
 }
@@ -328,6 +478,45 @@ export default {
 .btn-lg {
   padding: 12px 30px;
   font-size: 18px;
+}
+
+/* 用户下拉菜单 */
+.user-dropdown {
+  display: flex;
+  align-items: center;
+}
+
+.user-avatar-wrapper {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  padding: 5px 10px;
+  border-radius: 20px;
+  transition: background-color 0.3s;
+}
+
+.user-avatar-wrapper:hover {
+  background-color: #f5f7fa;
+}
+
+.user-avatar {
+  background-color: #409eff;
+}
+
+.user-name {
+  margin-left: 10px;
+  font-size: 14px;
+  color: #606266;
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dropdown-icon {
+  margin-left: 5px;
+  color: #909399;
+  font-size: 12px;
 }
 
 /* 英雄区域 */

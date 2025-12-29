@@ -170,7 +170,8 @@
                 </div>
               </div>
               <el-button type="primary" @click.stop="enrollTraining(training)">
-                <i class="el-icon-plus"></i> 立即报名
+                <el-icon v-if="training.externalUrl"><Link /></el-icon>
+                <i v-else class="el-icon-plus"></i> {{ training.externalUrl ? '外部报名' : '立即报名' }}
               </el-button>
             </div>
           </div>
@@ -368,8 +369,8 @@
 
 <script>
 import { ref, reactive, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
-import { Clock, Calendar, View, User, Coin, Location, Check } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Clock, Calendar, View, User, Coin, Location, Check, Link } from '@element-plus/icons-vue'
 
 export default {
   name: 'Training',
@@ -380,7 +381,8 @@ export default {
     User,
     Coin,
     Location,
-    Check
+    Check,
+    Link
   },
   setup() {
     // 搜索和筛选数据
@@ -413,6 +415,7 @@ export default {
         enrollmentCount: 156,
         rating: 4.8,
         image: 'https://via.placeholder.com/400x200/FFD700/FFFFFF?text=服装设计课程',
+        externalUrl: 'https://www.example.com/course/fashion-design',
         trainer: {
           name: '张设计师',
           title: '首席设计师',
@@ -466,6 +469,7 @@ export default {
         enrollmentCount: 89,
         rating: 4.6,
         image: 'https://via.placeholder.com/400x200/87CEEB/FFFFFF?text=服装打版课程',
+        externalUrl: 'https://www.example.com/course/pattern-making',
         trainer: {
           name: '李打版师',
           title: '高级打版师',
@@ -648,9 +652,25 @@ export default {
 
     // 报名培训
     const enrollTraining = (training) => {
-      // TODO: 调用API报名培训
-      ElMessage.success(`已报名培训：${training.title}`)
-      dialogVisible.value = false
+      // 如果有外部链接，跳转到外部培训平台
+      if (training.externalUrl) {
+        ElMessageBox.confirm(
+          `即将跳转到外部培训平台进行报名，是否继续？`,
+          '跳转确认',
+          {
+            confirmButtonText: '确认跳转',
+            cancelButtonText: '取消',
+            type: 'info'
+          }
+        ).then(() => {
+          window.open(training.externalUrl, '_blank')
+          ElMessage.success('已跳转到外部培训平台')
+        }).catch(() => {})
+      } else {
+        // 内部报名逻辑
+        ElMessage.success(`已报名培训：${training.title}`)
+        dialogVisible.value = false
+      }
     }
 
     // 添加收藏

@@ -39,4 +39,24 @@ public interface AuthService {
      * 重置密码
      */
     boolean resetPassword(String username, String newPassword, String token);
+    
+    /**
+     * 通过邮箱重置密码
+     */
+    boolean resetPasswordByEmail(String email, String newPassword, Integer userType);
+    
+    /**
+     * 检查邮箱是否存在
+     */
+    boolean checkEmailExists(String email, Integer userType);
+    
+    /**
+     * 检查用户名是否存在
+     */
+    boolean checkUsernameExists(String username, Integer userType);
+
+    /**
+     * 获取当前登录用户信息
+     */
+    Map<String, Object> getCurrentUser(String token);
 }

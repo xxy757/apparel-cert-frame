@@ -15,6 +15,10 @@
           <span class="stat-num">{{ activeToday }}</span>
           <span class="stat-label">今日活跃</span>
         </div>
+        <div class="stat-item">
+          <span class="stat-num">{{ collectedCount }}</span>
+          <span class="stat-label">已收藏</span>
+        </div>
       </div>
     </div>
 
@@ -34,6 +38,11 @@
         </el-input>
         <el-button type="primary" size="large" @click="searchTalents">
           搜索人才
+        </el-button>
+        <el-button size="large" @click="showCollectedOnly = !showCollectedOnly" 
+          :type="showCollectedOnly ? 'warning' : 'default'">
+          <el-icon><Star /></el-icon>
+          {{ showCollectedOnly ? '显示全部' : '仅看收藏' }}
         </el-button>
       </div>
 
@@ -114,13 +123,12 @@
             </el-select>
           </div>
           <div class="filter-item">
-            <label>所在城市</label>
-            <el-select v-model="filters.city" placeholder="不限城市" clearable>
-              <el-option label="北京" value="beijing" />
-              <el-option label="上海" value="shanghai" />
-              <el-option label="广州" value="guangzhou" />
-              <el-option label="深圳" value="shenzhen" />
-              <el-option label="杭州" value="hangzhou" />
+            <label>意向程度</label>
+            <el-select v-model="filters.intention" placeholder="全部意向" clearable>
+              <el-option label="高意向" value="high" />
+              <el-option label="中意向" value="medium" />
+              <el-option label="低意向" value="low" />
+              <el-option label="未标记" value="none" />
             </el-select>
           </div>
         </div>
@@ -133,7 +141,7 @@
 
     <!-- 搜索结果统计 -->
     <div class="result-header">
-      <span class="result-count">找到 <strong>{{ talents.length }}</strong> 位人才</span>
+      <span class="result-count">找到 <strong>{{ filteredTalents.length }}</strong> 位人才</span>
       <div class="sort-options">
         <span>排序：</span>
         <el-radio-group v-model="sortBy" size="small">
@@ -146,7 +154,7 @@
 
     <!-- 人才列表 -->
     <div class="talent-list">
-      <div class="talent-card" v-for="talent in talents" :key="talent.id">
+      <div class="talent-card" v-for="talent in filteredTalents" :key="talent.id">
         <div class="talent-avatar">
           <el-avatar :size="72" :src="talent.avatar">{{ talent.name?.charAt(0) }}</el-avatar>
           <div class="online-status" :class="{ online: talent.isOnline }"></div>
@@ -156,6 +164,10 @@
             <h3 class="talent-name">{{ talent.name }}</h3>
             <el-tag v-if="talent.certLevel" :type="getCertLevelType(talent.certLevel)" size="small">
               {{ talent.certLevel }}
+            </el-tag>
+            <!-- 意向标记显示 -->
+            <el-tag v-if="talent.intention" :type="getIntentionType(talent.intention)" size="small" effect="dark">
+              {{ getIntentionText(talent.intention) }}
             </el-tag>
           </div>
           <p class="talent-title">{{ talent.jobTitle }}</p>
@@ -185,13 +197,46 @@
               <el-icon><ChatDotRound /></el-icon>
               邀请面试
             </el-button>
-            <el-button :icon="talent.collected ? 'StarFilled' : 'Star'"
-              :type="talent.collected ? 'warning' : 'default'"
-              @click="toggleCollect(talent)"
-            >
-              {{ talent.collected ? '已收藏' : '收藏' }}
-            </el-button>
+            <div class="collect-intention-row">
+              <el-button 
+                :type="talent.collected ? 'warning' : 'default'"
+                @click="toggleCollect(talent)"
+              >
+                <el-icon><component :is="talent.collected ? StarFilled : Star" /></el-icon>
+                {{ talent.collected ? '已收藏' : '收藏' }}
+              </el-button>
+              <el-dropdown trigger="click" @command="(cmd) => setIntention(talent, cmd)">
+                <el-button>
+                  <el-icon><Flag /></el-icon>
+                  标记意向
+                </el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="high">
+                      <el-icon style="color: #67c23a"><Flag /></el-icon> 高意向
+                    </el-dropdown-item>
+                    <el-dropdown-item command="medium">
+                      <el-icon style="color: #e6a23c"><Flag /></el-icon> 中意向
+                    </el-dropdown-item>
+                    <el-dropdown-item command="low">
+                      <el-icon style="color: #909399"><Flag /></el-icon> 低意向
+                    </el-dropdown-item>
+                    <el-dropdown-item divided command="none">
+                      <el-icon><Close /></el-icon> 清除标记
+                    </el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+            </div>
           </div>
+          <!-- 备注区域 -->
+          <div class="talent-note" v-if="talent.note">
+            <el-icon><Memo /></el-icon>
+            <span>{{ talent.note }}</span>
+          </div>
+          <el-button link type="primary" size="small" @click="editNote(talent)" class="add-note-btn">
+            <el-icon><Edit /></el-icon> {{ talent.note ? '编辑备注' : '添加备注' }}
+          </el-button>
         </div>
       </div>
     </div>
@@ -207,13 +252,68 @@
         background
       />
     </div>
+
+    <!-- 简历详情对话框 -->
+    <el-dialog v-model="resumeDialogVisible" :title="`${currentTalent?.name} 的简历`" width="800px">
+      <div class="resume-detail" v-if="currentTalent">
+        <div class="resume-header">
+          <el-avatar :size="100" :src="currentTalent.avatar">{{ currentTalent.name?.charAt(0) }}</el-avatar>
+          <div class="resume-basic">
+            <h2>{{ currentTalent.name }}</h2>
+            <p class="job-title">{{ currentTalent.jobTitle }}</p>
+            <div class="resume-tags">
+              <el-tag :type="getCertLevelType(currentTalent.certLevel)">{{ currentTalent.certLevel }}</el-tag>
+              <el-tag v-if="currentTalent.intention" :type="getIntentionType(currentTalent.intention)" effect="dark">
+                {{ getIntentionText(currentTalent.intention) }}
+              </el-tag>
+            </div>
+          </div>
+          <div class="resume-actions">
+            <el-button type="primary" @click="inviteInterview(currentTalent)">邀请面试</el-button>
+            <el-button :type="currentTalent.collected ? 'warning' : 'default'" @click="toggleCollect(currentTalent)">
+              {{ currentTalent.collected ? '取消收藏' : '收藏简历' }}
+            </el-button>
+          </div>
+        </div>
+        <el-divider />
+        <el-descriptions :column="2" border>
+          <el-descriptions-item label="所在城市">{{ currentTalent.city }}</el-descriptions-item>
+          <el-descriptions-item label="工作经验">{{ currentTalent.experience }}</el-descriptions-item>
+          <el-descriptions-item label="学历">{{ currentTalent.education }}</el-descriptions-item>
+          <el-descriptions-item label="期望薪资">{{ currentTalent.expectedSalary }}</el-descriptions-item>
+          <el-descriptions-item label="技能标签" :span="2">
+            <el-tag v-for="skill in currentTalent.skills" :key="skill" size="small" style="margin-right: 8px">
+              {{ skill }}
+            </el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="个人简介" :span="2">{{ currentTalent.intro }}</el-descriptions-item>
+        </el-descriptions>
+      </div>
+    </el-dialog>
+
+    <!-- 备注编辑对话框 -->
+    <el-dialog v-model="noteDialogVisible" title="编辑备注" width="500px">
+      <el-input
+        v-model="noteContent"
+        type="textarea"
+        :rows="4"
+        placeholder="请输入对该人才的备注信息..."
+      />
+      <template #footer>
+        <el-button @click="noteDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="saveNote">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, computed } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Search, Filter, Location, Briefcase, School, View, ChatDotRound, Star, StarFilled } from '@element-plus/icons-vue'
+import { 
+  Search, Filter, Location, Briefcase, School, View, ChatDotRound, 
+  Star, StarFilled, Flag, Close, Memo, Edit 
+} from '@element-plus/icons-vue'
 
 const searchKeyword = ref('')
 const selectedTag = ref('')
@@ -224,6 +324,7 @@ const pageSize = ref(10)
 const total = ref(50)
 const totalTalents = ref(12580)
 const activeToday = ref(1256)
+const showCollectedOnly = ref(false)
 
 const hotTags = ['服装设计师', '版型师', '买手', '质检员', '生产管理']
 
@@ -233,18 +334,46 @@ const filters = reactive({
   experience: '',
   education: '',
   salary: '',
-  city: ''
+  intention: ''
 })
 
 const activeFilterCount = computed(() => {
   return Object.values(filters).filter(v => v).length
 })
 
+const collectedCount = computed(() => {
+  return talents.value.filter(t => t.collected).length
+})
+
+const filteredTalents = computed(() => {
+  let result = talents.value
+  if (showCollectedOnly.value) {
+    result = result.filter(t => t.collected)
+  }
+  if (filters.intention) {
+    if (filters.intention === 'none') {
+      result = result.filter(t => !t.intention)
+    } else {
+      result = result.filter(t => t.intention === filters.intention)
+    }
+  }
+  return result
+})
+
 const talents = ref([
-  { id: 1, name: '张小雅', avatar: '', jobTitle: '高级服装设计师', certLevel: '高级认证', city: '上海', experience: '5年', education: '本科', expectedSalary: '20K-30K', skills: ['女装设计', 'AI设计', '面料选择', '色彩搭配'], intro: '5年高端女装设计经验，擅长原创设计和品牌策划，曾主导多个系列产品开发。', isOnline: true, collected: false },
-  { id: 2, name: '李明华', avatar: '', jobTitle: '资深版型师', certLevel: '中级认证', city: '杭州', experience: '8年', education: '大专', expectedSalary: '15K-20K', skills: ['CAD制版', '立体裁剪', '样衣制作'], intro: '8年版型工作经验，精通各类服装版型开发，熟练使用ET、格柏等制版软件。', isOnline: false, collected: true },
-  { id: 3, name: '王雨晴', avatar: '', jobTitle: '时装买手', certLevel: '初级认证', city: '深圳', experience: '3年', education: '本科', expectedSalary: '12K-18K', skills: ['市场分析', '品牌采购', '趋势预测'], intro: '3年时装买手经验，对国际时尚趋势敏感，擅长品牌组合和商品策划。', isOnline: true, collected: false }
+  { id: 1, name: '张小雅', avatar: '', jobTitle: '高级服装设计师', certLevel: '高级认证', city: '上海', experience: '5年', education: '本科', expectedSalary: '20K-30K', skills: ['女装设计', 'AI设计', '面料选择', '色彩搭配'], intro: '5年高端女装设计经验，擅长原创设计和品牌策划，曾主导多个系列产品开发。', isOnline: true, collected: false, intention: '', note: '' },
+  { id: 2, name: '李明华', avatar: '', jobTitle: '资深版型师', certLevel: '中级认证', city: '杭州', experience: '8年', education: '大专', expectedSalary: '15K-20K', skills: ['CAD制版', '立体裁剪', '样衣制作'], intro: '8年版型工作经验，精通各类服装版型开发，熟练使用ET、格柏等制版软件。', isOnline: false, collected: true, intention: 'high', note: '技术能力强，可重点跟进' },
+  { id: 3, name: '王雨晴', avatar: '', jobTitle: '时装买手', certLevel: '初级认证', city: '深圳', experience: '3年', education: '本科', expectedSalary: '12K-18K', skills: ['市场分析', '品牌采购', '趋势预测'], intro: '3年时装买手经验，对国际时尚趋势敏感，擅长品牌组合和商品策划。', isOnline: true, collected: false, intention: 'medium', note: '' },
+  { id: 4, name: '陈思远', avatar: '', jobTitle: '服装质检主管', certLevel: '高级认证', city: '广州', experience: '10年', education: '本科', expectedSalary: '18K-25K', skills: ['质量管理', 'ISO认证', '供应商审核', '面料检测'], intro: '10年服装质检经验，熟悉国内外质量标准，曾负责多个大型品牌的质量管理体系建设。', isOnline: true, collected: true, intention: 'high', note: '经验丰富，适合质检主管岗位' },
+  { id: 5, name: '刘佳琪', avatar: '', jobTitle: '服装设计师', certLevel: '中级认证', city: '北京', experience: '4年', education: '硕士', expectedSalary: '15K-22K', skills: ['童装设计', '图案设计', 'PS', 'AI'], intro: '4年童装设计经验，擅长可爱风格和功能性童装设计，有多款爆款产品设计经验。', isOnline: false, collected: false, intention: '', note: '' }
 ])
+
+// 对话框状态
+const resumeDialogVisible = ref(false)
+const currentTalent = ref(null)
+const noteDialogVisible = ref(false)
+const noteContent = ref('')
+const noteTalent = ref(null)
 
 const selectTag = (tag) => {
   selectedTag.value = selectedTag.value === tag ? '' : tag
@@ -268,11 +397,52 @@ const getCertLevelType = (level) => {
   return types[level] || 'info'
 }
 
-const viewResume = (talent) => { ElMessage.info(`查看 ${talent.name} 的简历`) }
-const inviteInterview = (talent) => { ElMessage.success(`已向 ${talent.name} 发送面试邀请`) }
+const getIntentionType = (intention) => {
+  const types = { high: 'success', medium: 'warning', low: 'info' }
+  return types[intention] || 'info'
+}
+
+const getIntentionText = (intention) => {
+  const texts = { high: '高意向', medium: '中意向', low: '低意向' }
+  return texts[intention] || ''
+}
+
+const viewResume = (talent) => {
+  currentTalent.value = talent
+  resumeDialogVisible.value = true
+}
+
+const inviteInterview = (talent) => {
+  ElMessage.success(`已向 ${talent.name} 发送面试邀请`)
+}
+
 const toggleCollect = (talent) => {
   talent.collected = !talent.collected
-  ElMessage.success(talent.collected ? '已收藏' : '已取消收藏')
+  ElMessage.success(talent.collected ? `已收藏 ${talent.name}` : `已取消收藏 ${talent.name}`)
+}
+
+const setIntention = (talent, intention) => {
+  if (intention === 'none') {
+    talent.intention = ''
+    ElMessage.info(`已清除 ${talent.name} 的意向标记`)
+  } else {
+    talent.intention = intention
+    ElMessage.success(`已将 ${talent.name} 标记为${getIntentionText(intention)}`)
+  }
+}
+
+const editNote = (talent) => {
+  noteTalent.value = talent
+  noteContent.value = talent.note || ''
+  noteDialogVisible.value = true
+}
+
+const saveNote = () => {
+  if (noteTalent.value) {
+    noteTalent.value.note = noteContent.value
+    ElMessage.success('备注已保存')
+  }
+  noteDialogVisible.value = false
 }
 </script>
 
@@ -346,7 +516,7 @@ const toggleCollect = (talent) => {
 .online-status.online { background: #67c23a; }
 
 .talent-info { flex: 1; }
-.talent-header { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+.talent-header { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; flex-wrap: wrap; }
 .talent-name { font-size: 18px; font-weight: 600; margin: 0; color: #303133; }
 .talent-title { color: #606266; margin: 0 0 12px 0; }
 .talent-meta { display: flex; gap: 20px; margin-bottom: 12px; font-size: 13px; color: #909399; }
@@ -354,11 +524,68 @@ const toggleCollect = (talent) => {
 .talent-skills { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
 .talent-intro { color: #606266; font-size: 14px; line-height: 1.6; margin: 0; }
 
-.talent-actions { display: flex; flex-direction: column; justify-content: space-between; align-items: flex-end; min-width: 160px; }
-.salary-expect { text-align: right; margin-bottom: 16px; }
+.talent-actions { 
+  display: flex; 
+  flex-direction: column; 
+  justify-content: flex-start; 
+  align-items: flex-end; 
+  min-width: 180px;
+  gap: 12px;
+}
+.salary-expect { text-align: right; }
 .salary-label { font-size: 12px; color: #909399; display: block; }
 .salary-value { font-size: 20px; font-weight: 700; color: #f56c6c; }
 .action-buttons { display: flex; flex-direction: column; gap: 8px; }
+.collect-intention-row { display: flex; gap: 8px; }
+
+.talent-note {
+  background: linear-gradient(135deg, #fef9e7 0%, #fef3c7 100%);
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #92400e;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 200px;
+}
+
+.add-note-btn {
+  align-self: flex-end;
+}
+
+/* 简历详情对话框 */
+.resume-detail {
+  padding: 20px;
+}
+
+.resume-header {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.resume-basic h2 {
+  margin: 0 0 8px 0;
+  font-size: 24px;
+  color: #303133;
+}
+
+.resume-basic .job-title {
+  color: #606266;
+  margin: 0 0 12px 0;
+}
+
+.resume-tags {
+  display: flex;
+  gap: 8px;
+}
+
+.resume-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 12px;
+}
 
 .pagination-wrapper { display: flex; justify-content: center; padding: 24px; background: #fff; border-radius: 12px; margin-top: 24px; }
 
@@ -368,5 +595,6 @@ const toggleCollect = (talent) => {
   .filter-grid { grid-template-columns: 1fr; }
   .talent-card { flex-direction: column; }
   .talent-actions { align-items: stretch; width: 100%; }
+  .collect-intention-row { flex-direction: column; }
 }
 </style>

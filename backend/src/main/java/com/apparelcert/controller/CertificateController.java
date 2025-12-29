@@ -7,7 +7,10 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 证书控制器
@@ -80,12 +83,43 @@ public class CertificateController {
     }
 
     /**
-     * 验证证书真实性
+     * 验证证书真实性（公开接口）
      */
     @GetMapping("/verify")
-    public Result<Boolean> verifyCertificate(@RequestParam String certificateNumber) {
+    public Result<Map<String, Object>> verifyCertificate(@RequestParam String certificateNumber) {
+        Map<String, Object> result = new HashMap<>();
+        
+        Certificate certificate = certificateService.getByCertificateNumber(certificateNumber);
+        if (certificate == null) {
+            result.put("valid", false);
+            result.put("message", "证书不存在");
+            return Result.success(result);
+        }
+        
         boolean isValid = certificateService.verifyCertificate(certificateNumber);
-        return Result.success(isValid);
+        result.put("valid", isValid);
+        
+        if (isValid) {
+            result.put("message", "证书有效");
+            result.put("certificateNumber", certificate.getCertificateNumber());
+            result.put("name", certificate.getName());
+            result.put("certificationType", certificate.getCertificationType());
+            result.put("level", certificate.getLevel());
+            result.put("issueDate", certificate.getIssueDate());
+            result.put("expireDate", certificate.getExpireDate());
+            result.put("issuer", certificate.getIssuer());
+            result.put("description", certificate.getDescription());
+        } else {
+            if (certificate.getExpireDate() != null && certificate.getExpireDate().before(new Date())) {
+                result.put("message", "证书已过期");
+            } else if (!"有效".equals(certificate.getCertificateStatus())) {
+                result.put("message", "证书已失效");
+            } else {
+                result.put("message", "证书无效");
+            }
+        }
+        
+        return Result.success(result);
     }
 
     /**
@@ -122,5 +156,59 @@ public class CertificateController {
     public Result<String> exportCertificate(@RequestParam Long certificateId) {
         String pdfUrl = certificateService.exportCertificateToPdf(certificateId);
         return Result.success(pdfUrl);
+    }
+    
+    /**
+     * 检查证书有效期
+     */
+    @GetMapping("/validity")
+    public Result<Map<String, Object>> checkCertificateValidity(@RequestParam Long certificateId) {
+        Map<String, Object> validity = certificateService.checkCertificateValidity(certificateId);
+        return Result.success(validity);
+    }
+    
+    /**
+     * 获取即将过期的证书
+     */
+    @GetMapping("/expiring")
+    public Result<List<Certificate>> getExpiringCertificates(
+            @RequestParam(required = false) Long userId,
+            @RequestParam(defaultValue = "30") Integer daysBeforeExpire) {
+        List<Certificate> certificates = certificateService.getExpiringCertificates(userId, daysBeforeExpire);
+        return Result.success(certificates);
+    }
+    
+    /**
+     * 续期证书
+     */
+    @PostMapping("/renew")
+    public Result<Boolean> renewCertificate(
+            @RequestParam Long certificateId,
+            @RequestParam(defaultValue = "1") Integer years) {
+        boolean result = certificateService.renewCertificate(certificateId, years);
+        return result ? Result.success(true) : Result.error(500, "续期失败");
+    }
+    
+    /**
+     * 生成证书分享链接
+     */
+    @GetMapping("/share-link")
+    public Result<String> generateShareLink(@RequestParam Long certificateId) {
+        String shareLink = certificateService.generateShareLink(certificateId);
+        return shareLink != null ? Result.success(shareLink) : Result.error(404, "证书不存在");
+    }
+    
+    /**
+     * 通过分享码获取证书信息
+     */
+    @GetMapping("/share/{shareCode}")
+    public Result<Map<String, Object>> getCertificateByShareCode(@PathVariable String shareCode) {
+        Map<String, Object> result = certificateService.getCertificateByShareCode(shareCode);
+        Boolean success = (Boolean) result.get("success");
+        if (success != null && success) {
+            return Result.success(result);
+        } else {
+            return Result.error(404, (String) result.get("message"));
+        }
     }
 }

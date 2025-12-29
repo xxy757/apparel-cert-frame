@@ -39,4 +39,34 @@ public interface CertificationService extends IService<Certification> {
      * 分页查询认证记录
      */
     Page<Certification> pageQuery(Integer page, Integer size, Long userId);
+    
+    /**
+     * 更新认证状态
+     */
+    boolean updateStatus(Long certificationId, Integer status, String reviewComment);
+    
+    /**
+     * 认证通过后同步信息到简历
+     * @param certificationId 认证ID
+     * @return 是否成功
+     */
+    boolean syncToResume(Long certificationId);
+    
+    /**
+     * 完成认证（通过后自动生成证书并同步简历）
+     * @param certificationId 认证ID
+     * @param theoryScore 理论成绩
+     * @param practicalScore 实操成绩
+     * @param reviewComment 评审意见
+     * @return 是否成功
+     */
+    boolean completeCertification(Long certificationId, String theoryScore, String practicalScore, String reviewComment);
+    
+    /**
+     * 更新理论考试成绩
+     * @param applicationId 认证申请ID
+     * @param score 理论成绩
+     * @return 是否成功
+     */
+    boolean updateTheoryScore(Long applicationId, int score);
 }

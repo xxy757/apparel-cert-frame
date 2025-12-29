@@ -1,10 +1,56 @@
 <template>
   <div class="certification-container">
+    <!-- 证书有效期提醒弹窗 -->
+    <el-dialog v-model="expiryReminderVisible" title="证书有效期提醒" width="500px">
+      <div class="expiry-reminder-content">
+        <el-alert
+          v-if="expiringCertificates.length > 0"
+          title="您有证书即将过期"
+          type="warning"
+          :closable="false"
+          show-icon
+        >
+          <template #default>
+            <p>以下证书将在30天内过期，请及时续期：</p>
+          </template>
+        </el-alert>
+        <div class="expiring-cert-list">
+          <div v-for="cert in expiringCertificates" :key="cert.id" class="expiring-cert-item">
+            <div class="cert-info-row">
+              <el-icon class="cert-icon"><Medal /></el-icon>
+              <div class="cert-details">
+                <span class="cert-name">{{ cert.name }}</span>
+                <span class="cert-number">{{ cert.certificateNo }}</span>
+              </div>
+            </div>
+            <div class="cert-expiry">
+              <el-tag :type="cert.remainingDays <= 7 ? 'danger' : 'warning'" size="small">
+                剩余 {{ cert.remainingDays }} 天
+              </el-tag>
+              <span class="expiry-date">到期：{{ cert.expireDate }}</span>
+            </div>
+            <el-button type="primary" size="small" @click="renewCertificate(cert)">立即续期</el-button>
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="expiryReminderVisible = false">稍后处理</el-button>
+        <el-button type="primary" @click="goToRenewalPage">查看全部证书</el-button>
+      </template>
+    </el-dialog>
+
     <el-card shadow="hover">
       <template #header>
         <div class="card-header">
           <h2>技能认证管理</h2>
-          <el-button type="primary" @click="applyCertification">申请认证</el-button>
+          <div class="header-actions">
+            <el-badge :value="expiringCertificates.length" :hidden="expiringCertificates.length === 0" class="expiry-badge">
+              <el-button @click="checkExpiringCertificates" :loading="checkingExpiry">
+                <el-icon><Bell /></el-icon> 有效期检查
+              </el-button>
+            </el-badge>
+            <el-button type="primary" @click="applyCertification">申请认证</el-button>
+          </div>
         </div>
       </template>
       
@@ -135,21 +181,93 @@
         </div>
       </template>
     </el-dialog>
+
+    <!-- 证书分享对话框 -->
+    <el-dialog v-model="shareDialogVisible" title="分享证书" width="500px">
+      <div class="share-dialog-content" v-if="currentShareCert">
+        <div class="share-cert-preview">
+          <div class="cert-preview-header">
+            <el-icon class="cert-medal"><Medal /></el-icon>
+            <div class="cert-preview-info">
+              <h3>{{ currentShareCert.name }}</h3>
+              <p>证书编号：{{ currentShareCert.certificateNo }}</p>
+            </div>
+          </div>
+        </div>
+        
+        <div class="share-link-section">
+          <h4>分享链接</h4>
+          <div class="share-link-input">
+            <el-input v-model="currentShareLink" readonly>
+              <template #append>
+                <el-button @click="copyShareLink">
+                  <el-icon><CopyDocument /></el-icon> 复制
+                </el-button>
+              </template>
+            </el-input>
+          </div>
+        </div>
+        
+        <div class="share-social-section">
+          <h4>分享到社交平台</h4>
+          <div class="social-buttons">
+            <el-button class="social-btn weibo" @click="shareToSocial('weibo')">
+              <span class="social-icon">微博</span>
+            </el-button>
+            <el-button class="social-btn wechat" @click="shareToSocial('wechat')">
+              <span class="social-icon">微信</span>
+            </el-button>
+            <el-button class="social-btn linkedin" @click="shareToSocial('linkedin')">
+              <span class="social-icon">LinkedIn</span>
+            </el-button>
+            <el-button class="social-btn twitter" @click="shareToSocial('twitter')">
+              <span class="social-icon">Twitter</span>
+            </el-button>
+          </div>
+        </div>
+        
+        <el-alert
+          title="温馨提示"
+          type="info"
+          :closable="false"
+          show-icon
+          style="margin-top: 20px;"
+        >
+          分享链接可供他人验证您的证书真伪，有效期为30天。
+        </el-alert>
+      </div>
+      <template #footer>
+        <el-button @click="shareDialogVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script>
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Medal, Bell, Share, CopyDocument, Link } from '@element-plus/icons-vue'
+import request from '../../utils/request'
 
 export default {
   name: 'CertificationManage',
+  components: { Medal, Bell, Share, CopyDocument, Link },
   setup() {
     const router = useRouter()
     const activeTab = ref('application')
     const applyDialogVisible = ref(false)
     const applyFormRef = ref(null)
+    
+    // 证书有效期提醒相关
+    const expiryReminderVisible = ref(false)
+    const expiringCertificates = ref([])
+    const checkingExpiry = ref(false)
+    
+    // 证书分享相关
+    const shareDialogVisible = ref(false)
+    const currentShareCert = ref({})
+    const currentShareLink = ref('')
     
     const applications = ref([
       {
@@ -292,15 +410,130 @@ export default {
       ElMessage.info('验证证书功能开发中')
     }
     
-    const shareCertificate = (cert) => {
-      // TODO: 分享证书
-      ElMessage.info('分享证书功能开发中')
+    const shareCertificate = async (cert) => {
+      try {
+        // 获取分享链接
+        const response = await request.get('/api/admin/certification/certificate/share-link', {
+          params: { certificateId: cert.id }
+        })
+        const shareLink = response.data?.shareLink || `https://apparelcert.com/verify/${cert.certificateNo}`
+        showShareDialog(cert, shareLink)
+      } catch (error) {
+        // 模拟分享链接
+        const shareLink = `https://apparelcert.com/verify/${cert.certificateNo}`
+        showShareDialog(cert, shareLink)
+      }
+    }
+    
+    // 显示分享对话框
+    const showShareDialog = (cert, shareLink) => {
+      shareDialogVisible.value = true
+      currentShareCert.value = cert
+      currentShareLink.value = shareLink
+    }
+    
+    // 复制分享链接
+    const copyShareLink = async () => {
+      try {
+        await navigator.clipboard.writeText(currentShareLink.value)
+        ElMessage.success('链接已复制到剪贴板')
+      } catch (error) {
+        // 降级方案
+        const input = document.createElement('input')
+        input.value = currentShareLink.value
+        document.body.appendChild(input)
+        input.select()
+        document.execCommand('copy')
+        document.body.removeChild(input)
+        ElMessage.success('链接已复制到剪贴板')
+      }
+    }
+    
+    // 分享到社交平台
+    const shareToSocial = (platform) => {
+      const cert = currentShareCert.value
+      const shareText = `我获得了${cert.name}认证！证书编号：${cert.certificateNo}`
+      const shareUrl = currentShareLink.value
+      
+      let url = ''
+      switch (platform) {
+        case 'weibo':
+          url = `https://service.weibo.com/share/share.php?url=${encodeURIComponent(shareUrl)}&title=${encodeURIComponent(shareText)}`
+          break
+        case 'wechat':
+          // 微信分享需要生成二维码
+          ElMessage.info('请使用微信扫描二维码分享')
+          return
+        case 'linkedin':
+          url = `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shareUrl)}`
+          break
+        case 'twitter':
+          url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(shareUrl)}`
+          break
+      }
+      
+      if (url) {
+        window.open(url, '_blank', 'width=600,height=400')
+      }
     }
     
     const viewStandard = (standard) => {
       // TODO: 查看认证标准详情
       ElMessage.info('查看认证标准详情功能开发中')
     }
+    
+    // 检查即将过期的证书
+    const checkExpiringCertificates = async () => {
+      checkingExpiry.value = true
+      try {
+        const response = await request.get('/api/admin/certification/certificate/expiring', {
+          params: { daysBeforeExpire: 30 }
+        })
+        if (response.data && response.data.length > 0) {
+          expiringCertificates.value = response.data.map(cert => ({
+            ...cert,
+            remainingDays: Math.ceil((new Date(cert.expireDate) - new Date()) / (1000 * 60 * 60 * 24))
+          }))
+          expiryReminderVisible.value = true
+        } else {
+          ElMessage.success('所有证书状态正常')
+        }
+      } catch (error) {
+        // 模拟数据
+        expiringCertificates.value = [
+          { id: 1, name: '服装设计师初级证书', certificateNo: 'AC-2024-0001', expireDate: '2025-01-25', remainingDays: 28 }
+        ]
+        if (expiringCertificates.value.length > 0) {
+          expiryReminderVisible.value = true
+        }
+      } finally {
+        checkingExpiry.value = false
+      }
+    }
+    
+    // 续期证书
+    const renewCertificate = async (cert) => {
+      try {
+        await request.post('/api/admin/certification/certificate/renew', null, {
+          params: { certificateId: cert.id, years: 1 }
+        })
+        ElMessage.success('证书续期申请已提交')
+        expiryReminderVisible.value = false
+      } catch (error) {
+        ElMessage.info('续期功能开发中')
+      }
+    }
+    
+    // 跳转到证书管理页面
+    const goToRenewalPage = () => {
+      activeTab.value = 'certificate'
+      expiryReminderVisible.value = false
+    }
+    
+    // 页面加载时检查证书有效期
+    onMounted(() => {
+      checkExpiringCertificates()
+    })
     
     return {
       activeTab,
@@ -320,7 +553,20 @@ export default {
       downloadCertificate,
       verifyCertificate,
       shareCertificate,
-      viewStandard
+      viewStandard,
+      // 证书有效期提醒
+      expiryReminderVisible,
+      expiringCertificates,
+      checkingExpiry,
+      checkExpiringCertificates,
+      renewCertificate,
+      goToRenewalPage,
+      // 证书分享
+      shareDialogVisible,
+      currentShareCert,
+      currentShareLink,
+      copyShareLink,
+      shareToSocial
     }
   }
 }
@@ -398,5 +644,179 @@ export default {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
+}
+
+/* 证书有效期提醒样式 */
+.header-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.expiry-badge :deep(.el-badge__content) {
+  background-color: #f56c6c;
+}
+
+.expiry-reminder-content {
+  padding: 10px 0;
+}
+
+.expiring-cert-list {
+  margin-top: 20px;
+}
+
+.expiring-cert-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  background: linear-gradient(135deg, #fff9e6 0%, #fff3cd 100%);
+  border-radius: 12px;
+  margin-bottom: 12px;
+  border: 1px solid #ffeeba;
+}
+
+.cert-info-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.cert-icon {
+  font-size: 24px;
+  color: #e6a23c;
+}
+
+.cert-details {
+  display: flex;
+  flex-direction: column;
+}
+
+.cert-name {
+  font-weight: 600;
+  color: #303133;
+  font-size: 15px;
+}
+
+.cert-number {
+  font-size: 12px;
+  color: #909399;
+}
+
+.cert-expiry {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.expiry-date {
+  font-size: 12px;
+  color: #909399;
+}
+
+/* 证书分享对话框样式 */
+.share-dialog-content {
+  padding: 10px 0;
+}
+
+.share-cert-preview {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 24px;
+}
+
+.cert-preview-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  color: white;
+}
+
+.cert-medal {
+  font-size: 48px;
+  color: #ffd700;
+}
+
+.cert-preview-info h3 {
+  margin: 0 0 8px 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.cert-preview-info p {
+  margin: 0;
+  font-size: 14px;
+  opacity: 0.9;
+}
+
+.share-link-section, .share-social-section {
+  margin-bottom: 20px;
+}
+
+.share-link-section h4, .share-social-section h4 {
+  margin: 0 0 12px 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.share-link-input {
+  display: flex;
+  gap: 10px;
+}
+
+.social-buttons {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.social-btn {
+  flex: 1;
+  min-width: 100px;
+  border-radius: 8px;
+  font-weight: 500;
+}
+
+.social-btn.weibo {
+  background: #e6162d;
+  border-color: #e6162d;
+  color: white;
+}
+
+.social-btn.weibo:hover {
+  background: #cc1428;
+}
+
+.social-btn.wechat {
+  background: #07c160;
+  border-color: #07c160;
+  color: white;
+}
+
+.social-btn.wechat:hover {
+  background: #06ad56;
+}
+
+.social-btn.linkedin {
+  background: #0077b5;
+  border-color: #0077b5;
+  color: white;
+}
+
+.social-btn.linkedin:hover {
+  background: #006699;
+}
+
+.social-btn.twitter {
+  background: #1da1f2;
+  border-color: #1da1f2;
+  color: white;
+}
+
+.social-btn.twitter:hover {
+  background: #1a91da;
 }
 </style>

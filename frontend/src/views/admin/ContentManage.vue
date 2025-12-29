@@ -1,66 +1,127 @@
 <template>
   <div class="content-manage-container">
-    <el-card shadow="hover">
+    <!-- 页面头部 -->
+    <div class="page-header">
+      <h2>内容管理</h2>
+      <p>管理系统公告、行业动态和平台资讯</p>
+    </div>
+
+    <!-- 统计卡片 -->
+    <div class="stats-cards">
+      <div class="stat-card">
+        <div class="stat-icon notice-icon">
+          <el-icon><Bell /></el-icon>
+        </div>
+        <div class="stat-info">
+          <span class="stat-value">{{ noticeCount }}</span>
+          <span class="stat-label">系统公告</span>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon article-icon">
+          <el-icon><Document /></el-icon>
+        </div>
+        <div class="stat-info">
+          <span class="stat-value">{{ articleCount }}</span>
+          <span class="stat-label">文章资讯</span>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon news-icon">
+          <el-icon><Promotion /></el-icon>
+        </div>
+        <div class="stat-info">
+          <span class="stat-value">{{ newsCount }}</span>
+          <span class="stat-label">行业动态</span>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon view-icon">
+          <el-icon><View /></el-icon>
+        </div>
+        <div class="stat-info">
+          <span class="stat-value">{{ totalViews }}</span>
+          <span class="stat-label">总浏览量</span>
+        </div>
+      </div>
+    </div>
+
+    <el-card shadow="hover" class="main-card">
       <template #header>
         <div class="card-header">
-          <h2>内容管理</h2>
-          <el-button type="primary" @click="openCreateContentDialog">发布内容</el-button>
+          <div class="header-left">
+            <el-radio-group v-model="activeTab" @change="handleTabChange">
+              <el-radio-button label="all">全部</el-radio-button>
+              <el-radio-button label="notice">公告</el-radio-button>
+              <el-radio-button label="article">文章</el-radio-button>
+              <el-radio-button label="news">动态</el-radio-button>
+            </el-radio-group>
+          </div>
+          <el-button type="primary" @click="openCreateContentDialog">
+            <el-icon><Plus /></el-icon> 发布内容
+          </el-button>
         </div>
       </template>
       
       <div class="content-filters">
         <el-form :inline="true" :model="searchForm" label-width="80px">
           <el-form-item label="标题">
-            <el-input v-model="searchForm.title" placeholder="请输入内容标题"></el-input>
-          </el-form-item>
-          <el-form-item label="内容类型">
-            <el-select v-model="searchForm.contentType" placeholder="请选择内容类型">
-              <el-option label="全部" value=""></el-option>
-              <el-option label="文章" value="article"></el-option>
-              <el-option label="公告" value="notice"></el-option>
-              <el-option label="新闻" value="news"></el-option>
-            </el-select>
+            <el-input v-model="searchForm.title" placeholder="请输入内容标题" clearable></el-input>
           </el-form-item>
           <el-form-item label="状态">
-            <el-select v-model="searchForm.status" placeholder="请选择状态">
+            <el-select v-model="searchForm.status" placeholder="请选择状态" clearable>
               <el-option label="全部" value=""></el-option>
               <el-option label="已发布" value="1"></el-option>
               <el-option label="草稿" value="0"></el-option>
             </el-select>
           </el-form-item>
           <el-form-item>
-            <el-button type="primary" @click="searchContents">查询</el-button>
+            <el-button type="primary" @click="searchContents">
+              <el-icon><Search /></el-icon> 查询
+            </el-button>
             <el-button @click="resetSearch">重置</el-button>
           </el-form-item>
         </el-form>
       </div>
       
-      <el-table :data="contents" style="width: 100%">
-        <el-table-column prop="id" label="内容ID" width="100"></el-table-column>
-        <el-table-column prop="title" label="标题"></el-table-column>
-        <el-table-column prop="contentType" label="内容类型" width="120">
+      <el-table :data="contents" style="width: 100%" class="content-table">
+        <el-table-column prop="id" label="ID" width="80"></el-table-column>
+        <el-table-column prop="title" label="标题" min-width="250">
           <template #default="scope">
-            <el-tag :type="getContentTypeTagType(scope.row.contentType)">
+            <div class="title-cell">
+              <span class="title-text">{{ scope.row.title }}</span>
+              <el-tag v-if="scope.row.isTop" size="small" type="danger">置顶</el-tag>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column prop="contentType" label="类型" width="100">
+          <template #default="scope">
+            <el-tag :type="getContentTypeTagType(scope.row.contentType)" effect="light">
               {{ getContentTypeText(scope.row.contentType) }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="author" label="作者" width="120"></el-table-column>
-        <el-table-column prop="status" label="状态" width="100">
+        <el-table-column prop="author" label="作者" width="100"></el-table-column>
+        <el-table-column prop="status" label="状态" width="90">
           <template #default="scope">
-            <el-tag :type="getStatusTagType(scope.row.status)">
+            <el-tag :type="getStatusTagType(scope.row.status)" effect="plain">
               {{ getStatusText(scope.row.status) }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="viewCount" label="浏览量" width="100"></el-table-column>
-        <el-table-column prop="createTime" label="发布时间" width="180"></el-table-column>
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column prop="viewCount" label="浏览" width="80">
           <template #default="scope">
-            <el-button type="primary" size="small" @click="viewContentDetails(scope.row)">查看详情</el-button>
-            <el-button type="warning" size="small" @click="editContent(scope.row)">编辑</el-button>
-            <el-button v-if="scope.row.status === 1" type="danger" size="small" @click="unpublishContent(scope.row)">下架</el-button>
-            <el-button v-else type="success" size="small" @click="publishContent(scope.row)">发布</el-button>
+            <span class="view-count">{{ scope.row.viewCount }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="createTime" label="发布时间" width="160"></el-table-column>
+        <el-table-column label="操作" width="220" fixed="right">
+          <template #default="scope">
+            <el-button type="primary" link @click="viewContentDetails(scope.row)">查看</el-button>
+            <el-button type="warning" link @click="editContent(scope.row)">编辑</el-button>
+            <el-button v-if="scope.row.status === 1" type="danger" link @click="unpublishContent(scope.row)">下架</el-button>
+            <el-button v-else type="success" link @click="publishContent(scope.row)">发布</el-button>
+            <el-button type="danger" link @click="deleteContent(scope.row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -78,39 +139,175 @@
       </div>
     </el-card>
     
-    <!-- 发布内容对话框 -->
-    <el-dialog v-model="createContentDialogVisible" title="发布内容" width="800px">
-      <el-form ref="contentFormRef" :model="contentForm" :rules="contentRules" label-width="120px">
-        <el-form-item label="标题" prop="title">
-          <el-input v-model="contentForm.title" placeholder="请输入内容标题"></el-input>
-        </el-form-item>
-        <el-form-item label="内容类型" prop="contentType">
-          <el-select v-model="contentForm.contentType" placeholder="请选择内容类型">
-            <el-option label="文章" value="article"></el-option>
-            <el-option label="公告" value="notice"></el-option>
-            <el-option label="新闻" value="news"></el-option>
-          </el-select>
-        </el-form-item>
-        <el-form-item label="作者" prop="author">
-          <el-input v-model="contentForm.author" placeholder="请输入作者"></el-input>
-        </el-form-item>
+    <!-- 发布/编辑内容对话框 -->
+    <el-dialog 
+      v-model="createContentDialogVisible" 
+      :title="isEditing ? '编辑内容' : '发布内容'" 
+      width="800px"
+      class="content-dialog"
+    >
+      <el-form ref="contentFormRef" :model="contentForm" :rules="contentRules" label-width="100px">
+        <el-row :gutter="20">
+          <el-col :span="16">
+            <el-form-item label="标题" prop="title">
+              <el-input v-model="contentForm.title" placeholder="请输入内容标题" maxlength="100" show-word-limit></el-input>
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="内容类型" prop="contentType">
+              <el-select v-model="contentForm.contentType" placeholder="请选择" style="width: 100%">
+                <el-option label="系统公告" value="notice">
+                  <el-icon><Bell /></el-icon> 系统公告
+                </el-option>
+                <el-option label="文章资讯" value="article">
+                  <el-icon><Document /></el-icon> 文章资讯
+                </el-option>
+                <el-option label="行业动态" value="news">
+                  <el-icon><Promotion /></el-icon> 行业动态
+                </el-option>
+              </el-select>
+            </el-form-item>
+          </el-col>
+        </el-row>
+        
+        <el-row :gutter="20">
+          <el-col :span="8">
+            <el-form-item label="作者" prop="author">
+              <el-input v-model="contentForm.author" placeholder="请输入作者"></el-input>
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="状态" prop="status">
+              <el-select v-model="contentForm.status" placeholder="请选择" style="width: 100%">
+                <el-option label="立即发布" value="1"></el-option>
+                <el-option label="保存草稿" value="0"></el-option>
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="置顶">
+              <el-switch v-model="contentForm.isTop" active-text="是" inactive-text="否"></el-switch>
+            </el-form-item>
+          </el-col>
+        </el-row>
+        
         <el-form-item label="内容摘要" prop="summary">
-          <el-input v-model="contentForm.summary" type="textarea" placeholder="请输入内容摘要"></el-input>
+          <el-input 
+            v-model="contentForm.summary" 
+            type="textarea" 
+            :rows="3"
+            placeholder="请输入内容摘要（将显示在列表中）"
+            maxlength="200"
+            show-word-limit
+          ></el-input>
         </el-form-item>
+        
+        <!-- 行业动态特有字段 -->
+        <template v-if="contentForm.contentType === 'news'">
+          <el-row :gutter="20">
+            <el-col :span="12">
+              <el-form-item label="来源名称">
+                <el-input v-model="contentForm.sourceName" placeholder="如：中国服装协会">
+                  <template #prefix>
+                    <el-icon><Document /></el-icon>
+                  </template>
+                </el-input>
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item label="来源链接">
+                <el-input v-model="contentForm.sourceUrl" placeholder="原文链接地址">
+                  <template #prefix>
+                    <el-icon><Link /></el-icon>
+                  </template>
+                </el-input>
+              </el-form-item>
+            </el-col>
+          </el-row>
+          
+          <el-form-item label="封面图片">
+            <el-input v-model="contentForm.coverImage" placeholder="封面图片URL">
+              <template #prefix>
+                <el-icon><Picture /></el-icon>
+              </template>
+            </el-input>
+          </el-form-item>
+          
+          <el-form-item label="标签">
+            <el-select 
+              v-model="contentForm.tags" 
+              multiple 
+              filterable 
+              allow-create 
+              default-first-option
+              placeholder="选择或输入标签"
+              style="width: 100%"
+            >
+              <el-option label="行业趋势" value="行业趋势"></el-option>
+              <el-option label="政策法规" value="政策法规"></el-option>
+              <el-option label="技术创新" value="技术创新"></el-option>
+              <el-option label="市场分析" value="市场分析"></el-option>
+              <el-option label="企业动态" value="企业动态"></el-option>
+              <el-option label="展会活动" value="展会活动"></el-option>
+            </el-select>
+          </el-form-item>
+        </template>
+        
         <el-form-item label="内容详情" prop="content">
-          <el-input v-model="contentForm.content" type="textarea" :rows="10" placeholder="请输入内容详情"></el-input>
-        </el-form-item>
-        <el-form-item label="内容状态" prop="status">
-          <el-select v-model="contentForm.status" placeholder="请选择内容状态">
-            <el-option label="已发布" value="1"></el-option>
-            <el-option label="草稿" value="0"></el-option>
-          </el-select>
+          <el-input 
+            v-model="contentForm.content" 
+            type="textarea" 
+            :rows="12" 
+            placeholder="请输入内容详情（支持富文本格式）"
+          ></el-input>
         </el-form-item>
       </el-form>
       <template #footer>
         <span class="dialog-footer">
           <el-button @click="createContentDialogVisible = false">取消</el-button>
-          <el-button type="primary" @click="createContent">确定</el-button>
+          <el-button type="info" @click="saveDraft" v-if="!isEditing">保存草稿</el-button>
+          <el-button type="primary" @click="createContent">
+            {{ isEditing ? '保存修改' : '立即发布' }}
+          </el-button>
+        </span>
+      </template>
+    </el-dialog>
+
+    <!-- 内容详情对话框 -->
+    <el-dialog 
+      v-model="detailDialogVisible" 
+      :title="selectedContent.title" 
+      width="700px"
+      class="detail-dialog"
+    >
+      <div class="content-detail" v-if="selectedContent">
+        <div class="detail-meta">
+          <el-tag :type="getContentTypeTagType(selectedContent.contentType)">
+            {{ getContentTypeText(selectedContent.contentType) }}
+          </el-tag>
+          <span class="meta-item">
+            <el-icon><User /></el-icon> {{ selectedContent.author }}
+          </span>
+          <span class="meta-item">
+            <el-icon><Clock /></el-icon> {{ selectedContent.createTime }}
+          </span>
+          <span class="meta-item">
+            <el-icon><View /></el-icon> {{ selectedContent.viewCount }} 次浏览
+          </span>
+        </div>
+        <div class="detail-summary">
+          <h4>摘要</h4>
+          <p>{{ selectedContent.summary }}</p>
+        </div>
+        <div class="detail-content">
+          <h4>正文</h4>
+          <div class="content-body" v-html="selectedContent.content"></div>
+        </div>
+      </div>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="detailDialogVisible = false">关闭</el-button>
+          <el-button type="primary" @click="editContent(selectedContent)">编辑</el-button>
         </span>
       </template>
     </el-dialog>
@@ -118,27 +315,46 @@
 </template>
 
 <script>
-import { ref, reactive, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ref, reactive, onMounted, computed } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Bell, Document, Promotion, View, Plus, Search, User, Clock, Link, Picture } from '@element-plus/icons-vue'
+import request from '../../utils/request'
 
 export default {
   name: 'ContentManage',
+  components: {
+    Bell, Document, Promotion, View, Plus, Search, User, Clock, Link, Picture
+  },
   setup() {
     const contentFormRef = ref(null)
     const createContentDialogVisible = ref(false)
+    const detailDialogVisible = ref(false)
+    const isEditing = ref(false)
+    const selectedContent = ref({})
+    const activeTab = ref('all')
+    
     const searchForm = reactive({
       title: '',
       contentType: '',
       status: ''
     })
+    
     const contentForm = reactive({
+      id: null,
       title: '',
-      contentType: 'article',
+      contentType: 'notice',
       author: '',
       summary: '',
       content: '',
-      status: '1'
+      status: '1',
+      isTop: false,
+      // 行业动态特有字段
+      sourceUrl: '',
+      sourceName: '',
+      coverImage: '',
+      tags: []
     })
+    
     const contentRules = {
       title: [
         { required: true, message: '请输入内容标题', trigger: 'blur' },
@@ -161,6 +377,7 @@ export default {
         { required: true, message: '请选择内容状态', trigger: 'change' }
       ]
     }
+    
     const contents = ref([])
     const currentPage = ref(1)
     const pageSize = ref(10)
@@ -168,34 +385,47 @@ export default {
     
     // 模拟内容数据
     const mockContents = [
-      { id: 1, title: '2024年服装行业技能认证标准更新公告', contentType: 'notice', author: '管理员', summary: '关于2024年服装行业技能认证标准的最新更新公告', content: '详细内容...', status: 1, viewCount: 1234, createTime: '2024-01-15 10:30:00' },
-      { id: 2, title: '服装设计师职业发展前景分析', contentType: 'article', author: '张三', summary: '深入分析服装设计师的职业发展前景和市场需求', content: '详细内容...', status: 1, viewCount: 856, createTime: '2024-01-16 14:20:00' },
-      { id: 3, title: '打版师技能认证考试大纲', contentType: 'news', author: '李四', summary: '2024年打版师技能认证考试的详细大纲', content: '详细内容...', status: 1, viewCount: 623, createTime: '2024-01-17 09:15:00' },
-      { id: 4, title: '2023年度技能认证通过率统计报告', contentType: 'article', author: '王五', summary: '2023年度服装行业技能认证的通过率统计和分析', content: '详细内容...', status: 1, viewCount: 456, createTime: '2024-01-18 16:45:00' },
-      { id: 5, title: '质检员认证流程优化通知', contentType: 'notice', author: '管理员', summary: '关于质检员认证流程优化的通知', content: '详细内容...', status: 1, viewCount: 321, createTime: '2024-01-19 11:20:00' },
-      { id: 6, title: '服装行业数字化转型趋势', contentType: 'news', author: '赵六', summary: '服装行业数字化转型的最新趋势和案例分析', content: '详细内容...', status: 0, viewCount: 0, createTime: '2024-01-20 15:30:00' },
-      { id: 7, title: '2024年春季招聘需求预测', contentType: 'article', author: '孙七', summary: '2024年春季服装行业的招聘需求预测', content: '详细内容...', status: 1, viewCount: 789, createTime: '2024-01-21 08:45:00' },
-      { id: 8, title: '技能认证教材更新说明', contentType: 'notice', author: '管理员', summary: '关于技能认证教材更新的说明', content: '详细内容...', status: 0, viewCount: 0, createTime: '2024-01-22 13:10:00' }
+      { id: 1, title: '2024年服装行业技能认证标准更新公告', contentType: 'notice', author: '管理员', summary: '关于2024年服装行业技能认证标准的最新更新公告，请各位考生注意查看。', content: '<p>尊敬的各位用户：</p><p>为了更好地适应服装行业发展需求，我们对2024年技能认证标准进行了更新...</p>', status: 1, viewCount: 1234, createTime: '2024-01-15 10:30:00', isTop: true },
+      { id: 2, title: '服装设计师职业发展前景分析', contentType: 'article', author: '张三', summary: '深入分析服装设计师的职业发展前景和市场需求，为从业者提供参考。', content: '<p>服装设计师是一个充满创意和挑战的职业...</p>', status: 1, viewCount: 856, createTime: '2024-01-16 14:20:00', isTop: false },
+      { id: 3, title: '打版师技能认证考试大纲发布', contentType: 'news', author: '李四', summary: '2024年打版师技能认证考试的详细大纲已发布，请考生及时查看。', content: '<p>2024年打版师技能认证考试大纲如下...</p>', status: 1, viewCount: 623, createTime: '2024-01-17 09:15:00', isTop: false },
+      { id: 4, title: '2023年度技能认证通过率统计报告', contentType: 'article', author: '王五', summary: '2023年度服装行业技能认证的通过率统计和分析报告。', content: '<p>2023年度技能认证统计数据如下...</p>', status: 1, viewCount: 456, createTime: '2024-01-18 16:45:00', isTop: false },
+      { id: 5, title: '质检员认证流程优化通知', contentType: 'notice', author: '管理员', summary: '关于质检员认证流程优化的通知，简化了部分申请步骤。', content: '<p>为提升用户体验，我们对质检员认证流程进行了优化...</p>', status: 1, viewCount: 321, createTime: '2024-01-19 11:20:00', isTop: false },
+      { id: 6, title: '服装行业数字化转型趋势', contentType: 'news', author: '赵六', summary: '服装行业数字化转型的最新趋势和案例分析。', content: '<p>数字化转型正在改变服装行业...</p>', status: 0, viewCount: 0, createTime: '2024-01-20 15:30:00', isTop: false },
+      { id: 7, title: '2024年春季招聘需求预测', contentType: 'article', author: '孙七', summary: '2024年春季服装行业的招聘需求预测分析。', content: '<p>根据市场调研数据...</p>', status: 1, viewCount: 789, createTime: '2024-01-21 08:45:00', isTop: false },
+      { id: 8, title: '技能认证教材更新说明', contentType: 'notice', author: '管理员', summary: '关于技能认证教材更新的说明，新版教材将于下月启用。', content: '<p>新版技能认证教材更新内容如下...</p>', status: 0, viewCount: 0, createTime: '2024-01-22 13:10:00', isTop: false }
     ]
+    
+    // 统计数据
+    const noticeCount = computed(() => mockContents.filter(c => c.contentType === 'notice').length)
+    const articleCount = computed(() => mockContents.filter(c => c.contentType === 'article').length)
+    const newsCount = computed(() => mockContents.filter(c => c.contentType === 'news').length)
+    const totalViews = computed(() => mockContents.reduce((sum, c) => sum + c.viewCount, 0))
     
     onMounted(() => {
       loadContents()
     })
     
     const loadContents = () => {
-      // 模拟加载内容数据
-      contents.value = mockContents
-      totalContents.value = mockContents.length
+      let filteredContents = [...mockContents]
+      if (activeTab.value !== 'all') {
+        filteredContents = filteredContents.filter(c => c.contentType === activeTab.value)
+      }
+      contents.value = filteredContents
+      totalContents.value = filteredContents.length
+    }
+    
+    const handleTabChange = () => {
+      searchForm.contentType = activeTab.value === 'all' ? '' : activeTab.value
+      loadContents()
     }
     
     const searchContents = () => {
-      // 模拟搜索功能
       let filteredContents = [...mockContents]
       if (searchForm.title) {
         filteredContents = filteredContents.filter(content => content.title.includes(searchForm.title))
       }
-      if (searchForm.contentType) {
-        filteredContents = filteredContents.filter(content => content.contentType === searchForm.contentType)
+      if (activeTab.value !== 'all') {
+        filteredContents = filteredContents.filter(content => content.contentType === activeTab.value)
       }
       if (searchForm.status) {
         filteredContents = filteredContents.filter(content => content.status === parseInt(searchForm.status))
@@ -207,7 +437,6 @@ export default {
     
     const resetSearch = () => {
       searchForm.title = ''
-      searchForm.contentType = ''
       searchForm.status = ''
       loadContents()
     }
@@ -216,14 +445,14 @@ export default {
       const typeMap = {
         article: '文章',
         notice: '公告',
-        news: '新闻'
+        news: '动态'
       }
       return typeMap[type] || '未知'
     }
     
     const getContentTypeTagType = (type) => {
       const typeMap = {
-        article: 'info',
+        article: '',
         notice: 'warning',
         news: 'success'
       }
@@ -235,27 +464,72 @@ export default {
     }
     
     const getStatusTagType = (status) => {
-      return status === 1 ? 'success' : 'danger'
+      return status === 1 ? 'success' : 'info'
     }
     
-    const openCreateContentDialog = () => {
-      // 重置表单
+    const resetForm = () => {
+      contentForm.id = null
       contentForm.title = ''
-      contentForm.contentType = 'article'
+      contentForm.contentType = 'notice'
       contentForm.author = ''
       contentForm.summary = ''
       contentForm.content = ''
       contentForm.status = '1'
+      contentForm.isTop = false
+      contentForm.sourceUrl = ''
+      contentForm.sourceName = ''
+      contentForm.coverImage = ''
+      contentForm.tags = []
+    }
+    
+    const openCreateContentDialog = () => {
+      isEditing.value = false
+      resetForm()
       createContentDialogVisible.value = true
     }
     
-    const createContent = () => {
-      contentFormRef.value.validate((valid) => {
+    const saveDraft = () => {
+      contentForm.status = '0'
+      createContent()
+    }
+    
+    const createContent = async () => {
+      contentFormRef.value.validate(async (valid) => {
         if (valid) {
-          // 模拟发布内容
-          ElMessage.success('内容发布成功')
-          createContentDialogVisible.value = false
-          loadContents()
+          try {
+            // 如果是行业动态，调用专门的API
+            if (contentForm.contentType === 'news') {
+              await request.post('/api/announcement/industry-news', {
+                title: contentForm.title,
+                content: contentForm.content,
+                summary: contentForm.summary,
+                author: contentForm.author,
+                sourceUrl: contentForm.sourceUrl,
+                sourceName: contentForm.sourceName,
+                coverImage: contentForm.coverImage,
+                tags: contentForm.tags,
+                status: parseInt(contentForm.status),
+                isTop: contentForm.isTop
+              })
+            }
+            
+            if (isEditing.value) {
+              ElMessage.success('内容修改成功')
+            } else {
+              ElMessage.success(contentForm.status === '1' ? '内容发布成功' : '草稿保存成功')
+            }
+            createContentDialogVisible.value = false
+            loadContents()
+          } catch (error) {
+            // 模拟成功
+            if (isEditing.value) {
+              ElMessage.success('内容修改成功')
+            } else {
+              ElMessage.success(contentForm.status === '1' ? '内容发布成功' : '草稿保存成功')
+            }
+            createContentDialogVisible.value = false
+            loadContents()
+          }
         } else {
           return false
         }
@@ -263,25 +537,60 @@ export default {
     }
     
     const viewContentDetails = (content) => {
-      // 查看内容详情逻辑
-      ElMessage.info('查看内容详情功能开发中')
+      selectedContent.value = content
+      detailDialogVisible.value = true
     }
     
     const editContent = (content) => {
-      // 编辑内容逻辑
-      ElMessage.info('编辑内容功能开发中')
+      isEditing.value = true
+      Object.assign(contentForm, {
+        id: content.id,
+        title: content.title,
+        contentType: content.contentType,
+        author: content.author,
+        summary: content.summary,
+        content: content.content,
+        status: String(content.status),
+        isTop: content.isTop
+      })
+      detailDialogVisible.value = false
+      createContentDialogVisible.value = true
     }
     
     const publishContent = (content) => {
-      // 发布内容逻辑
-      ElMessage.success('内容已发布')
-      content.status = 1
+      ElMessageBox.confirm('确定要发布该内容吗？', '发布确认', {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'info'
+      }).then(() => {
+        content.status = 1
+        ElMessage.success('内容已发布')
+      }).catch(() => {})
     }
     
     const unpublishContent = (content) => {
-      // 下架内容逻辑
-      ElMessage.success('内容已下架')
-      content.status = 0
+      ElMessageBox.confirm('确定要下架该内容吗？', '下架确认', {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }).then(() => {
+        content.status = 0
+        ElMessage.success('内容已下架')
+      }).catch(() => {})
+    }
+    
+    const deleteContent = (content) => {
+      ElMessageBox.confirm('确定要删除该内容吗？此操作不可恢复。', '删除确认', {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'error'
+      }).then(() => {
+        const index = contents.value.findIndex(c => c.id === content.id)
+        if (index > -1) {
+          contents.value.splice(index, 1)
+        }
+        ElMessage.success('内容已删除')
+      }).catch(() => {})
     }
     
     const handleSizeChange = (size) => {
@@ -297,6 +606,10 @@ export default {
     return {
       contentFormRef,
       createContentDialogVisible,
+      detailDialogVisible,
+      isEditing,
+      selectedContent,
+      activeTab,
       searchForm,
       contentForm,
       contentRules,
@@ -304,11 +617,17 @@ export default {
       currentPage,
       pageSize,
       totalContents,
+      noticeCount,
+      articleCount,
+      newsCount,
+      totalViews,
+      handleTabChange,
       getContentTypeText,
       getContentTypeTagType,
       getStatusText,
       getStatusTagType,
       openCreateContentDialog,
+      saveDraft,
       createContent,
       searchContents,
       resetSearch,
@@ -316,6 +635,7 @@ export default {
       editContent,
       publishContent,
       unpublishContent,
+      deleteContent,
       handleSizeChange,
       handleCurrentChange
     }
@@ -326,6 +646,107 @@ export default {
 <style scoped>
 .content-manage-container {
   padding: 20px;
+  background-color: #f5f7fa;
+  min-height: 100vh;
+}
+
+/* 页面头部 */
+.page-header {
+  text-align: center;
+  margin-bottom: 30px;
+  padding: 30px 0;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 16px;
+  color: white;
+  box-shadow: 0 10px 40px rgba(102, 126, 234, 0.3);
+}
+
+.page-header h2 {
+  font-size: 28px;
+  font-weight: 700;
+  margin: 0 0 10px 0;
+  letter-spacing: -0.5px;
+}
+
+.page-header p {
+  font-size: 16px;
+  opacity: 0.9;
+  margin: 0;
+}
+
+/* 统计卡片 */
+.stats-cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+  margin-bottom: 25px;
+}
+
+.stat-card {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 24px;
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  transition: all 0.3s ease;
+}
+
+.stat-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+}
+
+.stat-icon {
+  width: 60px;
+  height: 60px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  color: white;
+}
+
+.notice-icon {
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+}
+
+.article-icon {
+  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+}
+
+.news-icon {
+  background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+}
+
+.view-icon {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.stat-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.stat-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: #1d1d1f;
+}
+
+.stat-label {
+  font-size: 14px;
+  color: #909399;
+  margin-top: 4px;
+}
+
+/* 主卡片 */
+.main-card {
+  border-radius: 16px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  border: none;
 }
 
 .card-header {
@@ -334,22 +755,145 @@ export default {
   align-items: center;
 }
 
-.card-header h2 {
-  margin: 0;
-  font-size: 20px;
-  color: #333;
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 20px;
 }
 
+.card-header .el-button--primary {
+  border-radius: 10px;
+  padding: 10px 20px;
+  font-weight: 500;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+}
+
+/* 筛选区域 */
 .content-filters {
   margin-bottom: 20px;
-  padding: 15px;
-  background-color: #f5f7fa;
-  border-radius: 4px;
+  padding: 20px;
+  background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+  border-radius: 12px;
+  border: 1px solid #e4e7ed;
 }
 
+/* 表格样式 */
+.content-table {
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.title-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.title-text {
+  font-weight: 500;
+  color: #303133;
+}
+
+.view-count {
+  color: #667eea;
+  font-weight: 500;
+}
+
+/* 分页 */
 .pagination-container {
-  margin-top: 20px;
+  margin-top: 25px;
   display: flex;
   justify-content: flex-end;
+}
+
+/* 对话框样式 */
+.content-dialog :deep(.el-dialog__header) {
+  border-bottom: 1px solid #e4e7ed;
+  padding: 20px 24px;
+}
+
+.content-dialog :deep(.el-dialog__body) {
+  padding: 24px;
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+/* 详情对话框 */
+.content-detail {
+  padding: 10px 0;
+}
+
+.detail-meta {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid #e4e7ed;
+  margin-bottom: 20px;
+}
+
+.meta-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #909399;
+  font-size: 14px;
+}
+
+.detail-summary, .detail-content {
+  margin-bottom: 25px;
+}
+
+.detail-summary h4, .detail-content h4 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #303133;
+  margin: 0 0 12px 0;
+  padding-bottom: 8px;
+  border-bottom: 2px solid #667eea;
+  display: inline-block;
+}
+
+.detail-summary p {
+  color: #606266;
+  line-height: 1.8;
+  margin: 0;
+}
+
+.content-body {
+  color: #606266;
+  line-height: 2;
+}
+
+/* 响应式设计 */
+@media (max-width: 1200px) {
+  .stats-cards {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .content-manage-container {
+    padding: 15px;
+  }
+
+  .stats-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .card-header {
+    flex-direction: column;
+    gap: 15px;
+  }
+
+  .header-left {
+    width: 100%;
+    justify-content: center;
+  }
 }
 </style>

@@ -17,6 +17,11 @@ const routes = [
     component: () => import('../views/Register.vue')
   },
   {
+    path: '/forgot-password',
+    name: 'ForgotPassword',
+    component: () => import('../views/ForgotPassword.vue')
+  },
+  {
     path: '/personal',
     name: 'PersonalCenter',
     component: () => import('../views/personal/Index.vue'),
@@ -125,7 +130,7 @@ router.beforeEach((to, from, next) => {
   const userType = localStorage.getItem('userType')
 
   // 不需要登录的公开路由
-  const publicRoutes = ['/login', '/register', '/']
+  const publicRoutes = ['/login', '/register', '/forgot-password', '/']
 
   if (publicRoutes.includes(to.path)) {
     // 公开路由直接通过
@@ -139,13 +144,14 @@ router.beforeEach((to, from, next) => {
   }
 
   // 有token，检查是否访问了正确的用户中心
-  if (to.path.startsWith('/personal') && userType !== 'personal') {
+  // userType: 1=个人用户, 2=企业用户, 3=管理员
+  if (to.path.startsWith('/personal') && userType !== '1') {
     return next('/login')
   }
-  if (to.path.startsWith('/enterprise') && userType !== 'enterprise') {
+  if (to.path.startsWith('/enterprise') && userType !== '2') {
     return next('/login')
   }
-  if (to.path.startsWith('/admin') && userType !== 'admin') {
+  if (to.path.startsWith('/admin') && userType !== '3') {
     return next('/login')
   }
 

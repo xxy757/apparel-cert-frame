@@ -6,6 +6,9 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
+import java.util.HashMap;
+import java.util.Map;
+
 /**
  * 题目实体类
  */
@@ -28,4 +31,23 @@ public class Question extends BaseEntity {
     private String category;
     private Integer score;
     private String applicableCertification;
+    
+    /**
+     * 获取选项Map
+     */
+    public Map<String, String> getOptions() {
+        Map<String, String> options = new HashMap<>();
+        if (optionA != null) options.put("A", optionA);
+        if (optionB != null) options.put("B", optionB);
+        if (optionC != null) options.put("C", optionC);
+        if (optionD != null) options.put("D", optionD);
+        return options;
+    }
+    
+    /**
+     * 获取正确答案（别名方法）
+     */
+    public String getAnswer() {
+        return correctAnswer;
+    }
 }

@@ -1,36 +1,67 @@
 package com.apparelcert.entity;
 
-import com.baomidou.mybatisplus.annotation.IdType;
-import com.baomidou.mybatisplus.annotation.TableId;
-import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.annotation.*;
 import lombok.Data;
-import lombok.EqualsAndHashCode;
+
+import java.util.Date;
 
 /**
  * 个人简历实体类
  */
 @Data
-@EqualsAndHashCode(callSuper = true)
 @TableName("resume")
-public class Resume extends BaseEntity {
+public class Resume {
 
     @TableId(type = IdType.AUTO)
     private Long id;
+    
+    /**
+     * 用户ID
+     */
     private Long userId;
-    private String name;
-    private String phone;
-    private String email;
-    private String gender;
-    private Integer age;
+    
+    /**
+     * 基本信息（JSON格式）
+     */
+    @TableField("basic_info")
+    private String basicInfo;
+    
+    /**
+     * 教育背景（JSON格式数组）
+     */
     private String education;
-    private String major;
-    private String school;
-    private String careerDirection;
+    
+    /**
+     * 工作经历（JSON格式数组）
+     */
+    @TableField("work_experience")
     private String workExperience;
+    
+    /**
+     * 项目经验（JSON格式数组）
+     */
+    @TableField("project_experience")
     private String projectExperience;
+    
+    /**
+     * 技能（JSON格式数组）
+     */
     private String skills;
+    
+    /**
+     * 证书（JSON格式数组）
+     */
     private String certificates;
-    private String selfIntroduction;
+    
+    /**
+     * 是否公开：0-私有，1-公开
+     */
+    @TableField("is_public")
     private Integer isPublic;
-    private String pdfUrl;
+
+    @TableField(fill = FieldFill.INSERT)
+    private Date createTime;
+
+    @TableField(fill = FieldFill.INSERT_UPDATE)
+    private Date updateTime;
 }

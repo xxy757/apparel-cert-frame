@@ -58,6 +58,18 @@ public class JobController {
         List<Job> jobs = jobService.getRecommendedJobs(userId);
         return Result.success(jobs);
     }
+    
+    /**
+     * 获取智能推荐岗位（带匹配度）
+     */
+    @GetMapping("/smart-recommended")
+    public Result<java.util.Map<String, Object>> getSmartRecommendedJobs(
+            @RequestParam Long userId,
+            @RequestParam(defaultValue = "1") Integer page,
+            @RequestParam(defaultValue = "10") Integer size) {
+        java.util.Map<String, Object> result = jobService.getSmartRecommendedJobs(userId, page, size);
+        return Result.success(result);
+    }
 
     /**
      * 搜索岗位
@@ -74,6 +86,21 @@ public class JobController {
     @PostMapping("/apply")
     public Result<Boolean> applyJob(@RequestParam Long jobId, @RequestParam Long userId, @RequestParam String resumeUrl) {
         boolean result = applicationService.applyJob(jobId, userId, resumeUrl);
+        return Result.success(result);
+    }
+    
+    /**
+     * 批量投递简历
+     */
+    @PostMapping("/batch-apply")
+    public Result<java.util.Map<String, Object>> batchApplyJobs(@RequestBody java.util.Map<String, Object> params) {
+        @SuppressWarnings("unchecked")
+        java.util.List<Long> jobIds = ((java.util.List<Number>) params.get("jobIds"))
+            .stream().map(Number::longValue).collect(java.util.stream.Collectors.toList());
+        Long userId = Long.parseLong(params.get("userId").toString());
+        String resumeUrl = (String) params.get("resumeUrl");
+        
+        java.util.Map<String, Object> result = applicationService.batchApplyJobs(jobIds, userId, resumeUrl);
         return Result.success(result);
     }
 
