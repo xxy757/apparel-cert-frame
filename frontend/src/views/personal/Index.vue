@@ -3,7 +3,7 @@
     <div class="personal-sidebar">
       <div class="user-info">
         <div class="avatar">
-          <el-avatar size="large">{{ user.name ? user.name.charAt(0) : 'U' }}</el-avatar>
+          <el-avatar size="large" :src="user.avatar">{{ user.name ? user.name.charAt(0) : 'U' }}</el-avatar>
         </div>
         <div class="user-details">
           <h3>{{ user.name || '未登录' }}</h3>
@@ -19,6 +19,11 @@
         text-color="#bfcbd9"
         active-text-color="#409EFF"
       >
+        <el-menu-item index="/personal/profile">
+          <template #title>
+            <span>个人信息</span>
+          </template>
+        </el-menu-item>
         <el-menu-item index="/personal/resume">
           <template #title>
             <span>简历管理</span>
@@ -60,7 +65,7 @@
         <div class="header-right">
           <el-dropdown trigger="click" @command="handleCommand">
             <div class="user-dropdown">
-              <el-avatar :size="36">{{ user.name ? user.name.charAt(0) : 'U' }}</el-avatar>
+              <el-avatar :size="36" :src="user.avatar">{{ user.name ? user.name.charAt(0) : 'U' }}</el-avatar>
               <span class="username">{{ user.name || '用户' }}</span>
               <el-icon><ArrowDown /></el-icon>
             </div>
@@ -92,6 +97,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ArrowDown, User, SwitchButton } from '@element-plus/icons-vue'
+import request from '@/utils/request'
 
 export default {
   name: 'PersonalCenter',
@@ -103,28 +109,45 @@ export default {
   setup() {
     const router = useRouter()
     const route = useRoute()
-    const activeMenu = ref('/personal/resume')
+    const activeMenu = ref('/personal/profile')
     const user = reactive({
-      name: '张三',
-      careerDirection: '设计师'
+      name: '',
+      careerDirection: '',
+      avatar: ''
     })
     
     onMounted(() => {
       // 设置当前激活的菜单
       activeMenu.value = route.path
       
-      // 从localStorage获取用户信息
-      const username = localStorage.getItem('username')
-      if (username) {
-        user.name = username
-      }
-      console.log('获取用户信息')
+      // 获取当前用户信息
+      loadCurrentUser()
     })
+    
+    const loadCurrentUser = async () => {
+      try {
+        const response = await request.get('/auth/current-user')
+        if (response.code === 200) {
+          const userData = response.data
+          user.name = userData.name || localStorage.getItem('username') || ''
+          user.careerDirection = userData.careerDirection || ''
+          user.avatar = userData.avatar || ''
+        } else {
+          console.error('获取用户信息失败:', response.message)
+          // 回退到localStorage中的用户名
+          user.name = localStorage.getItem('username') || ''
+        }
+      } catch (error) {
+        console.error('获取用户信息异常:', error)
+        // 回退到localStorage中的用户名
+        user.name = localStorage.getItem('username') || ''
+      }
+    }
     
     const handleCommand = (command) => {
       if (command === 'profile') {
         // 跳转到个人信息页面
-        router.push('/personal/resume')
+        router.push('/personal/profile')
       } else if (command === 'logout') {
         logout()
       }

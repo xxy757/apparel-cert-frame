@@ -5,6 +5,7 @@ import com.apparelcert.entity.UserPersonal;
 import com.apparelcert.mapper.UserEnterpriseMapper;
 import com.apparelcert.mapper.UserPersonalMapper;
 import com.apparelcert.service.AuthService;
+import com.apparelcert.service.AvatarService;
 import com.apparelcert.utils.JwtUtil;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,6 +30,9 @@ public class AuthServiceImpl implements AuthService {
 
     @Autowired
     private UserEnterpriseMapper userEnterpriseMapper;
+
+    @Autowired
+    private AvatarService avatarService;
 
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
@@ -58,6 +62,12 @@ public class AuthServiceImpl implements AuthService {
         // 加密密码
         String encodedPassword = passwordEncoder.encode(userPersonal.getPassword());
         userPersonal.setPassword(encodedPassword);
+
+        // 自动分配随机头像（如果用户没有设置头像）
+        if (userPersonal.getAvatar() == null || userPersonal.getAvatar().trim().isEmpty()) {
+            String avatarUrl = avatarService.generateAvatarByUsername(userPersonal.getUsername());
+            userPersonal.setAvatar(avatarUrl);
+        }
 
         // 设置用户状态为正常
         userPersonal.setStatus(1);
@@ -102,6 +112,12 @@ public class AuthServiceImpl implements AuthService {
         // 加密密码
         String encodedPassword = passwordEncoder.encode(userEnterprise.getPassword());
         userEnterprise.setPassword(encodedPassword);
+
+        // 自动分配随机Logo（如果企业没有设置Logo）
+        if (userEnterprise.getLogo() == null || userEnterprise.getLogo().trim().isEmpty()) {
+            String logoUrl = avatarService.generateLogoByCompanyName(userEnterprise.getCompanyName());
+            userEnterprise.setLogo(logoUrl);
+        }
 
         // 设置审核状态为待审核
         userEnterprise.setAuthStatus(0);

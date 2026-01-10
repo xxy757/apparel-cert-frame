@@ -91,6 +91,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ArrowDown, OfficeBuilding, SwitchButton } from '@element-plus/icons-vue'
+import request from '@/utils/request'
 
 export default {
   name: 'EnterpriseCenter',
@@ -104,22 +105,40 @@ export default {
     const route = useRoute()
     const activeMenu = ref('/enterprise/job')
     const enterprise = reactive({
-      companyName: '某服装品牌有限公司',
-      authStatus: 1,
-      logo: ''
+      companyName: '',
+      authStatus: 0,
+      logo: '',
+      contactPerson: ''
     })
     
     onMounted(() => {
       // 设置当前激活的菜单
       activeMenu.value = route.path
       
-      // 从localStorage获取企业信息
-      const username = localStorage.getItem('username')
-      if (username) {
-        enterprise.companyName = username
-      }
-      console.log('获取企业信息')
+      // 获取当前企业用户信息
+      loadCurrentEnterprise()
     })
+    
+    const loadCurrentEnterprise = async () => {
+      try {
+        const response = await request.get('/auth/current-user')
+        if (response.code === 200) {
+          const enterpriseData = response.data
+          enterprise.companyName = enterpriseData.companyName || localStorage.getItem('username') || ''
+          enterprise.authStatus = enterpriseData.authStatus || 0
+          enterprise.logo = enterpriseData.logo || ''
+          enterprise.contactPerson = enterpriseData.contactPerson || ''
+        } else {
+          console.error('获取企业信息失败:', response.message)
+          // 回退到localStorage中的用户名
+          enterprise.companyName = localStorage.getItem('username') || ''
+        }
+      } catch (error) {
+        console.error('获取企业信息异常:', error)
+        // 回退到localStorage中的用户名
+        enterprise.companyName = localStorage.getItem('username') || ''
+      }
+    }
     
     const getAuthStatusText = (status) => {
       const statusMap = {

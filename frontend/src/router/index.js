@@ -32,6 +32,11 @@ const routes = [
         component: () => import('../views/personal/Resume.vue')
       },
       {
+        path: 'profile',
+        name: 'PersonalProfile',
+        component: () => import('../views/personal/Profile.vue')
+      },
+      {
         path: 'certification',
         name: 'CertificationManage',
         component: () => import('../views/personal/Certification.vue')
