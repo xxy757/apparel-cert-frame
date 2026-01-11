@@ -139,6 +139,7 @@ import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Edit } from '@element-plus/icons-vue'
 import request from '@/utils/request'
+import emitter from '@/utils/eventBus'
 
 export default {
   name: 'PersonalProfile',
@@ -246,6 +247,7 @@ export default {
       if (response.code === 200 && response.data && response.data.url) {
         userInfo.avatar = response.data.url
         ElMessage.success('头像上传成功')
+        emitter.emit('user-updated')
         // 触发表单验证，因为头像发生了变化
         if (formRef.value) {
           formRef.value.validateField('avatar')
@@ -302,6 +304,7 @@ export default {
           ElMessage.success('个人信息更新成功')
           // 更新原始信息
           Object.assign(originalUserInfo, JSON.parse(JSON.stringify(userInfo)))
+          emitter.emit('user-updated')
         } else {
           ElMessage.error(response.message || '更新失败')
         }

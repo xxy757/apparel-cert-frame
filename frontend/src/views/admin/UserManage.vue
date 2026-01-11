@@ -444,55 +444,36 @@ const statisticsData = reactive({
   certificationRate: 45.2
 })
 
-// 模拟用户数据
-const mockUsers = [
-  { id: 1, username: '张小雅', email: 'zhangxiaoya@example.com', phone: '13800138001', userType: 'personal', status: 1, createTime: '2024-01-15 10:30:00', lastLoginTime: '2024-12-27 09:15:00', loginCount: 156, lastLoginIp: '192.168.1.100', remark: '优秀设计师' },
-  { id: 2, username: '时尚服饰有限公司', email: 'hr@fashion.com', phone: '13800138002', userType: 'enterprise', status: 1, createTime: '2024-01-16 14:20:00', lastLoginTime: '2024-12-26 16:30:00', loginCount: 89, lastLoginIp: '10.0.0.50' },
-  { id: 3, username: '王明华', email: 'wangminghua@example.com', phone: '13800138003', userType: 'personal', status: 1, createTime: '2024-01-17 09:15:00', lastLoginTime: '2024-12-25 11:20:00', loginCount: 45, lastLoginIp: '172.16.0.88' },
-  { id: 4, username: '系统管理员', email: 'admin@apparelcert.com', phone: '13800138004', userType: 'admin', status: 1, createTime: '2024-01-01 00:00:00', lastLoginTime: '2024-12-27 08:00:00', loginCount: 520, lastLoginIp: '127.0.0.1' },
-  { id: 5, username: '李雨晴', email: 'liyuqing@example.com', phone: '13800138005', userType: 'personal', status: 0, createTime: '2024-02-10 15:30:00', lastLoginTime: '2024-11-20 14:00:00', loginCount: 23, lastLoginIp: '192.168.2.55', remark: '账号异常，已禁用' },
-  { id: 6, username: '优衣库服装公司', email: 'contact@uniqlo.cn', phone: '13800138006', userType: 'enterprise', status: 1, createTime: '2024-02-15 10:00:00', lastLoginTime: '2024-12-26 17:45:00', loginCount: 178, lastLoginIp: '10.10.10.10' },
-  { id: 7, username: '陈设计', email: 'chensheji@example.com', phone: '13800138007', userType: 'personal', status: 1, createTime: '2024-03-01 09:00:00', lastLoginTime: '2024-12-27 10:30:00', loginCount: 67, lastLoginIp: '192.168.1.200' },
-  { id: 8, username: '赵质检', email: 'zhaozhijian@example.com', phone: '13800138008', userType: 'personal', status: 1, createTime: '2024-03-15 14:30:00', lastLoginTime: '2024-12-24 09:00:00', loginCount: 34, lastLoginIp: '172.20.0.100' }
-]
-
-// 模拟登录记录
-const mockLoginHistory = [
-  { loginTime: '2024-12-27 09:15:00', loginIp: '192.168.1.100', location: '北京市朝阳区', device: 'Chrome 120 / Windows 10', status: 'success' },
-  { loginTime: '2024-12-26 18:30:00', loginIp: '192.168.1.100', location: '北京市朝阳区', device: 'Chrome 120 / Windows 10', status: 'success' },
-  { loginTime: '2024-12-26 10:00:00', loginIp: '10.0.0.55', location: '上海市浦东新区', device: 'Safari / macOS', status: 'failed' },
-  { loginTime: '2024-12-25 14:20:00', loginIp: '192.168.1.100', location: '北京市朝阳区', device: 'Chrome 120 / Windows 10', status: 'success' },
-  { loginTime: '2024-12-24 09:00:00', loginIp: '192.168.1.100', location: '北京市朝阳区', device: 'Chrome 120 / Windows 10', status: 'success' }
-]
-
 onMounted(() => {
   loadUsers()
 })
 
-const loadUsers = () => {
-  users.value = mockUsers
-  totalUsers.value = mockUsers.length
+const loadUsers = async () => {
+  try {
+    const response = await request.get('/api/admin/user/list', {
+      params: {
+        page: currentPage.value,
+        size: pageSize.value,
+        keyword: searchForm.keyword,
+        userType: searchForm.userType,
+        status: searchForm.status,
+        startDate: searchForm.dateRange ? searchForm.dateRange[0] : '',
+        endDate: searchForm.dateRange ? searchForm.dateRange[1] : ''
+      }
+    })
+        
+    users.value = response.data.records || []
+    totalUsers.value = response.data.total || 0
+  } catch (error) {
+    console.error('加载用户失败:', error)
+    ElMessage.error('加载用户失败')
+    users.value = []
+    totalUsers.value = 0
+  }
 }
 
 const searchUsers = () => {
-  let filtered = [...mockUsers]
-  if (searchForm.keyword) {
-    const kw = searchForm.keyword.toLowerCase()
-    filtered = filtered.filter(u => 
-      u.username.toLowerCase().includes(kw) || 
-      u.email.toLowerCase().includes(kw) || 
-      u.phone.includes(kw)
-    )
-  }
-  if (searchForm.userType) {
-    filtered = filtered.filter(u => u.userType === searchForm.userType)
-  }
-  if (searchForm.status !== '') {
-    filtered = filtered.filter(u => u.status === parseInt(searchForm.status))
-  }
-  users.value = filtered
-  totalUsers.value = filtered.length
-  currentPage.value = 1
+  loadUsers()
 }
 
 const resetSearch = () => {
@@ -574,9 +555,17 @@ const resetPassword = (user) => {
   }).catch(() => {})
 }
 
-const viewLoginHistory = (user) => {
-  loginHistory.value = mockLoginHistory
-  loginHistoryVisible.value = true
+const viewLoginHistory = async (user) => {
+  try {
+    const response = await request.get(`/api/admin/user/${user.id}/login-history`)
+    loginHistory.value = response.data || []
+    loginHistoryVisible.value = true
+  } catch (error) {
+    console.error('加载登录记录失败:', error)
+    ElMessage.error('加载登录记录失败')
+    loginHistory.value = []
+    loginHistoryVisible.value = true
+  }
 }
 
 const deleteUser = (user) => {

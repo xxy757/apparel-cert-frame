@@ -125,6 +125,7 @@
 <script>
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import request from '../../utils/request'
 
 export default {
   name: 'CertificationManage',
@@ -171,43 +172,34 @@ export default {
     const pageSize = ref(10)
     const totalCertifications = ref(0)
     
-    // 模拟认证申请数据
-    const mockCertifications = [
-      { id: 1, username: '张三', certType: 'designer', applyTime: '2024-01-15 10:30:00', status: 1, reviewer: '管理员', reviewTime: '2024-01-16 14:20:00' },
-      { id: 2, username: '李四', certType: 'patternmaker', applyTime: '2024-01-16 09:15:00', status: 0, reviewer: '', reviewTime: '' },
-      { id: 3, username: '王五', certType: 'inspector', applyTime: '2024-01-17 16:45:00', status: 1, reviewer: '管理员', reviewTime: '2024-01-18 10:20:00' },
-      { id: 4, username: '赵六', certType: 'sales', applyTime: '2024-01-18 13:10:00', status: 2, reviewer: '管理员', reviewTime: '2024-01-19 09:30:00' },
-      { id: 5, username: '孙七', certType: 'designer', applyTime: '2024-01-19 11:20:00', status: 0, reviewer: '', reviewTime: '' },
-      { id: 6, username: '周八', certType: 'patternmaker', applyTime: '2024-01-20 15:30:00', status: 1, reviewer: '管理员', reviewTime: '2024-01-21 14:45:00' },
-      { id: 7, username: '吴九', certType: 'inspector', applyTime: '2024-01-21 08:45:00', status: 2, reviewer: '管理员', reviewTime: '2024-01-22 10:15:00' },
-      { id: 8, username: '郑十', certType: 'designer', applyTime: '2024-01-22 13:10:00', status: 0, reviewer: '', reviewTime: '' }
-    ]
-    
     onMounted(() => {
       loadCertifications()
     })
     
-    const loadCertifications = () => {
-      // 模拟加载认证申请数据
-      certifications.value = mockCertifications
-      totalCertifications.value = mockCertifications.length
+    const loadCertifications = async () => {
+      try {
+        const response = await request.get('/api/admin/certification/applications', {
+          params: {
+            page: currentPage.value,
+            size: pageSize.value,
+            username: searchForm.username,
+            certType: searchForm.certType,
+            status: searchForm.status
+          }
+        })
+        
+        certifications.value = response.data.records || []
+        totalCertifications.value = response.data.total || 0
+      } catch (error) {
+        console.error('加载认证申请失败:', error)
+        ElMessage.error('加载认证申请失败')
+        certifications.value = []
+        totalCertifications.value = 0
+      }
     }
     
     const searchCertifications = () => {
-      // 模拟搜索功能
-      let filteredCertifications = [...mockCertifications]
-      if (searchForm.username) {
-        filteredCertifications = filteredCertifications.filter(cert => cert.username.includes(searchForm.username))
-      }
-      if (searchForm.certType) {
-        filteredCertifications = filteredCertifications.filter(cert => cert.certType === searchForm.certType)
-      }
-      if (searchForm.status) {
-        filteredCertifications = filteredCertifications.filter(cert => cert.status === parseInt(searchForm.status))
-      }
-      certifications.value = filteredCertifications
-      totalCertifications.value = filteredCertifications.length
-      currentPage.value = 1
+      loadCertifications()
     }
     
     const resetSearch = () => {

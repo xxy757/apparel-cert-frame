@@ -409,19 +409,24 @@
 import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { MagicStick, Refresh, Check, Position, Clock, InfoFilled } from '@element-plus/icons-vue'
-import request from '../../utils/request'
+import {
+  searchJobs,
+  getRecommendedJobs,
+  getJobDetail,
+  applyToJob,
+  batchApplyToJobs,
+  toggleSaveJob,
+  createScheduledDelivery
+} from '../../api/job'
 
 export default {
   name: 'JobSearch',
-  components: {
-    MagicStick,
-    Refresh,
-    Check,
-    Position,
-    Clock,
-    InfoFilled
-  },
+  components: { MagicStick, Refresh, Check, Position, Clock, InfoFilled },
   setup() {
+    // 加载状态
+    const loading = ref(false)
+    const recommendationLoading = ref(false)
+
     // 搜索和筛选数据
     const searchQuery = ref('')
     const filters = reactive({
@@ -433,233 +438,192 @@ export default {
       companyType: ''
     })
 
-    // 批量投递相关
+    // 职位数据
+    const jobs = ref([])
+    const totalJobs = ref(0)
+    const recommendedJobs = ref([])
+
+    // 分页数据
+    const pagination = reactive({
+      currentPage: 1,
+      pageSize: 10
+    })
+
+    // 职位详情对话框
+    const dialogVisible = ref(false)
+    const selectedJob = ref(null)
+
+    // 批量操作
     const selectedJobs = ref([])
     const selectAll = ref(false)
     const batchApplying = ref(false)
     const batchApplyDialogVisible = ref(false)
 
-    // 定时投递相关
+    // 定时投递
     const scheduledDeliveryDialogVisible = ref(false)
     const schedulingDelivery = ref(false)
     const scheduledFormRef = ref(null)
     const scheduledForm = reactive({
       scheduledTime: '',
-      resumeId: 1
+      resumeId: 1 // 假设用户只有一个简历或使用默认简历
     })
     const scheduledRules = {
-      scheduledTime: [
-        { required: true, message: '请选择投递时间', trigger: 'change' }
-      ]
+      scheduledTime: [{ required: true, message: '请选择投递时间', trigger: 'change' }]
     }
+    
+    // --- API 调用 ---
 
-    // 智能推荐相关
-    const recommendedJobs = ref([
-      {
-        id: 101,
-        title: '高级服装设计师',
-        companyName: '某知名服装品牌',
-        location: '北京',
-        salary: '15k-25k',
-        matchScore: 95,
-        matchReasons: ['技能匹配', '经验匹配', '地点偏好']
-      },
-      {
-        id: 102,
-        title: '服装打版师',
-        companyName: '上海服装有限公司',
-        location: '上海',
-        salary: '10k-18k',
-        matchScore: 88,
-        matchReasons: ['认证匹配', '薪资期望']
-      },
-      {
-        id: 103,
-        title: '服装质检主管',
-        companyName: '广州纺织品集团',
-        location: '广州',
-        salary: '12k-20k',
-        matchScore: 82,
-        matchReasons: ['行业经验', '技能匹配']
+    // 搜索/加载职位列表
+    const handleSearch = async () => {
+      loading.value = true
+      try {
+        const params = {
+          query: searchQuery.value,
+          ...filters,
+          page: pagination.currentPage,
+          size: pagination.pageSize
+        }
+        const res = await searchJobs(params)
+        jobs.value = res.data.records || []
+        totalJobs.value = res.data.total || 0
+      } catch (error) {
+        ElMessage.error('职位加载失败')
+        console.error("Failed to search jobs:", error)
+      } finally {
+        loading.value = false
       }
-    ])
-
-    // 计算是否为半选状态
-    const isIndeterminate = computed(() => {
-      return selectedJobs.value.length > 0 && selectedJobs.value.length < jobs.value.length
-    })
-
-    // 职位数据
-    const jobs = ref([
-      {
-        id: 1,
-        title: '高级服装设计师',
-        type: '设计师',
-        companyName: '某知名服装品牌',
-        companyLogo: 'https://via.placeholder.com/60',
-        companyDesc: '国内领先的时尚服装品牌，专注于高端女装设计与生产',
-        companySize: '500-1000人',
-        companyIndustry: '服装/纺织',
-        location: '北京',
-        salary: '15k-25k',
-        experience: '3-5年',
-        education: '本科',
-        description: '负责女装系列的设计开发，包括款式设计、面料选择、色彩搭配等工作。需要具备良好的时尚敏感度和设计能力，能够把握市场趋势，独立完成设计任务。',
-        requirements: [
-          '服装设计相关专业本科及以上学历',
-          '3年以上女装设计经验',
-          '熟练使用Photoshop、Illustrator等设计软件',
-          '具备良好的时尚敏感度和创新能力',
-          '有团队协作精神和沟通能力'
-        ],
-        benefits: ['五险一金', '年终奖', '带薪年假', '节日福利', '定期培训'],
-        tags: ['女装', '设计', '高端', '时尚'],
-        saved: false
-      },
-      {
-        id: 2,
-        title: '服装打版师',
-        type: '打版师',
-        companyName: '上海服装有限公司',
-        companyLogo: 'https://via.placeholder.com/60',
-        companyDesc: '专业从事服装生产的现代化企业，拥有先进的生产设备和技术',
-        companySize: '1000-2000人',
-        companyIndustry: '服装/纺织',
-        location: '上海',
-        salary: '10k-18k',
-        experience: '1-3年',
-        education: '大专',
-        description: '负责服装样板的制作和修改，根据设计师的图纸或样衣制作出符合要求的纸样。需要具备扎实的服装结构知识和打版技术，能够准确理解设计意图。',
-        requirements: [
-          '服装工程或相关专业大专及以上学历',
-          '1年以上服装打版经验',
-          '熟练使用CAD等打版软件',
-          '具备良好的服装结构知识',
-          '工作认真细致，责任心强'
-        ],
-        benefits: ['五险一金', '绩效奖金', '包吃住', '晋升空间', '年度体检'],
-        tags: ['打版', '男装', '生产'],
-        saved: true
-      },
-      {
-        id: 3,
-        title: '服装质检员',
-        type: '质检员',
-        companyName: '广州纺织品集团',
-        companyLogo: 'https://via.placeholder.com/60',
-        companyDesc: '大型纺织品生产企业，产品出口多个国家和地区',
-        companySize: '2000-5000人',
-        companyIndustry: '纺织/面料',
-        location: '广州',
-        salary: '8k-12k',
-        experience: '1-3年',
-        education: '高中/中专',
-        description: '负责服装产品的质量检验工作，确保产品符合质量标准和客户要求。需要具备服装质量检验的专业知识和技能，能够识别各种质量问题。',
-        requirements: [
-          '高中或中专以上学历',
-          '1年以上服装质检经验',
-          '了解服装质量检验标准和流程',
-          '工作认真负责，具有较强的观察力',
-          '能够适应加班'
-        ],
-        benefits: ['五险一金', '加班补贴', '交通补贴', '员工食堂', '生日福利'],
-        tags: ['质检', '纺织品', '出口'],
-        saved: false
-      }
-    ])
-
-    // 分页数据
-    const currentPage = ref(1)
-    const pageSize = ref(10)
-
-    // 职位详情对话框
-    const dialogVisible = ref(false)
-    const selectedJob = ref({})
-
-    // 生命周期钩子
-    onMounted(() => {
-      // TODO: 从API获取职位数据和推荐数据
-      console.log('Job search page loaded')
-      loadRecommendations()
-    })
+    }
 
     // 加载智能推荐
     const loadRecommendations = async () => {
-      // TODO: 调用API获取推荐职位
-      console.log('Loading recommendations...')
+      recommendationLoading.value = true
+      try {
+        const res = await getRecommendedJobs()
+        recommendedJobs.value = res.data || []
+      } catch (error) {
+        // 推荐加载失败不是关键性错误，可以静默处理或轻提示
+        console.error("Failed to load recommendations:", error)
+      } finally {
+        recommendationLoading.value = false
+      }
     }
-
-    // 刷新推荐
-    const refreshRecommendations = () => {
-      ElMessage.info('正在刷新推荐...')
+    
+    onMounted(() => {
+      handleSearch()
       loadRecommendations()
-    }
-
-    // 搜索职位
-    const searchJobs = () => {
-      // TODO: 调用API搜索职位
-      ElMessage.info('搜索功能开发中')
-    }
-
-    // 重置筛选条件
+    })
+    
     const resetFilters = () => {
-      Object.keys(filters).forEach(key => {
-        filters[key] = ''
-      })
+      Object.keys(filters).forEach(key => { filters[key] = '' })
       searchQuery.value = ''
-      // TODO: 重置搜索结果
+      handleSearch()
     }
 
     // 查看职位详情
-    const viewJobDetail = (job) => {
-      selectedJob.value = job
+    const viewJobDetail = async (job) => {
       dialogVisible.value = true
+      selectedJob.value = job // 先用列表数据填充
+      try {
+        // 如果列表数据不完整，可以再获取一次完整的详情
+        if (!job.requirements) {
+            const res = await getJobDetail(job.id)
+            selectedJob.value = res.data
+        }
+      } catch (error) {
+        ElMessage.error('获取职位详情失败')
+      }
     }
 
     // 申请职位
-    const applyForJob = (job) => {
-      // TODO: 调用API申请职位
-      ElMessage.success(`已申请职位：${job.title}`)
-      dialogVisible.value = false
+    const applyForJob = async (job) => {
+      try {
+        // 假设使用默认简历ID 1
+        await applyToJob({ jobId: job.id, resumeId: 1 })
+        ElMessage.success(`已成功申请职位：${job.title}`)
+        dialogVisible.value = false
+      } catch (error) {
+        ElMessage.error('申请失败，请稍后重试')
+      }
     }
 
     // 收藏职位
-    const saveJob = (job) => {
-      job.saved = !job.saved
-      ElMessage.success(job.saved ? '职位已收藏' : '收藏已取消')
-    }
-
-    // 获取职位类型颜色
-    const getJobTypeColor = (type) => {
-      const colorMap = {
-        '设计师': 'primary',
-        '打版师': 'success',
-        '质检员': 'warning',
-        '导购': 'info',
-        '生产管理': 'danger',
-        '市场营销': 'purple'
+    const saveJob = async (job) => {
+      try {
+        await toggleSaveJob(job.id)
+        job.saved = !job.saved
+        ElMessage.success(job.saved ? '职位已收藏' : '收藏已取消')
+      } catch (error) {
+        ElMessage.error('操作失败')
       }
-      return colorMap[type] || 'info'
     }
 
-    // 重置选中的职位
-    const resetSelectedJob = () => {
-      selectedJob.value = {}
+    // 批量投递
+    const batchApply = () => {
+      if (selectedJobs.value.length === 0) return ElMessage.warning('请先选择职位')
+      batchApplyDialogVisible.value = true
     }
 
-    // 分页处理
+    const confirmBatchApply = async () => {
+      batchApplying.value = true
+      try {
+        const jobIds = selectedJobs.value.map(j => j.id)
+        await batchApplyToJobs({ jobIds, resumeId: 1 }) // 假设使用默认简历
+        ElMessage.success(`成功投递 ${selectedJobs.value.length} 个职位`)
+        batchApplyDialogVisible.value = false
+        clearSelection()
+      } catch (error) {
+        ElMessage.error('批量投递失败，请重试')
+      } finally {
+        batchApplying.value = false
+      }
+    }
+    
+    // 定时投递
+    const openScheduledDeliveryDialog = () => {
+      batchApplyDialogVisible.value = false
+      scheduledDeliveryDialogVisible.value = true
+    }
+
+    const confirmScheduledDelivery = async () => {
+      if (!scheduledFormRef.value) return
+      await scheduledFormRef.value.validate(async (valid) => {
+        if (!valid) return
+        schedulingDelivery.value = true
+        try {
+          const jobIds = selectedJobs.value.map(j => j.id)
+          await createScheduledDelivery({
+            jobIds,
+            resumeId: scheduledForm.resumeId,
+            scheduledTime: scheduledForm.scheduledTime
+          })
+          ElMessage.success(`已成功设置 ${jobIds.length} 个职位的定时投递`)
+          scheduledDeliveryDialogVisible.value = false
+          clearSelection()
+        } catch (error) {
+          ElMessage.error('定时投递设置失败')
+        } finally {
+          schedulingDelivery.value = false
+        }
+      })
+    }
+    
+    // --- UI & Helper Functions ---
+    
     const handleSizeChange = (size) => {
-      pageSize.value = size
+      pagination.pageSize = size
+      handleSearch()
     }
-
     const handleCurrentChange = (current) => {
-      currentPage.value = current
+      pagination.currentPage = current
+      handleSearch()
     }
 
-    // 批量选择相关方法
-    const isJobSelected = (jobId) => {
-      return selectedJobs.value.some(j => j.id === jobId)
+    const clearSelection = () => {
+      selectedJobs.value = []
+      selectAll.value = false
     }
+
+    const isJobSelected = (jobId) => selectedJobs.value.some(j => j.id === jobId)
 
     const toggleJobSelection = (job) => {
       const index = selectedJobs.value.findIndex(j => j.id === job.id)
@@ -668,149 +632,59 @@ export default {
       } else {
         selectedJobs.value.push(job)
       }
-      updateSelectAllState()
     }
 
     const toggleSelectAll = (val) => {
-      if (val) {
-        selectedJobs.value = [...jobs.value]
-      } else {
-        selectedJobs.value = []
-      }
+      selectedJobs.value = val ? [...jobs.value] : []
     }
 
-    const updateSelectAllState = () => {
-      selectAll.value = selectedJobs.value.length === jobs.value.length
-    }
+    const isIndeterminate = computed(() => {
+        const selectedCount = selectedJobs.value.length;
+        return selectedCount > 0 && selectedCount < jobs.value.length;
+    });
 
-    const clearSelection = () => {
-      selectedJobs.value = []
-      selectAll.value = false
-    }
+    const disabledDate = (time) => time.getTime() < Date.now() - 8.64e7
 
-    // 批量投递
-    const batchApply = () => {
-      if (selectedJobs.value.length === 0) {
-        ElMessage.warning('请先选择要投递的职位')
-        return
-      }
-      batchApplyDialogVisible.value = true
-    }
-
-    const confirmBatchApply = async () => {
-      batchApplying.value = true
-      try {
-        // TODO: 调用批量投递API
-        await new Promise(resolve => setTimeout(resolve, 1500))
-        
-        ElMessage.success(`成功投递 ${selectedJobs.value.length} 个职位`)
-        batchApplyDialogVisible.value = false
-        clearSelection()
-      } catch (error) {
-        console.error('批量投递失败:', error)
-        ElMessage.error('批量投递失败，请重试')
-      } finally {
-        batchApplying.value = false
-      }
-    }
-
-    // 定时投递相关方法
-    const openScheduledDeliveryDialog = () => {
-      batchApplyDialogVisible.value = false
-      scheduledDeliveryDialogVisible.value = true
-    }
-
-    const disabledDate = (time) => {
-      return time.getTime() < Date.now() - 8.64e7
-    }
-
-    const disabledHours = () => {
-      const hours = []
-      const now = new Date()
-      if (scheduledForm.scheduledTime) {
-        const selectedDate = new Date(scheduledForm.scheduledTime)
-        if (selectedDate.toDateString() === now.toDateString()) {
-          for (let i = 0; i < now.getHours(); i++) {
-            hours.push(i)
-          }
-        }
-      }
-      return hours
-    }
-
-    const confirmScheduledDelivery = async () => {
-      if (!scheduledFormRef.value) return
-      
-      scheduledFormRef.value.validate(async (valid) => {
-        if (!valid) return
-        
-        schedulingDelivery.value = true
-        try {
-          const jobIds = selectedJobs.value.map(j => j.id)
-          await request.post('/api/scheduled-delivery/batch-create', {
-            userId: 1, // 从登录状态获取
-            jobIds: jobIds,
-            resumeId: scheduledForm.resumeId,
-            scheduledTime: scheduledForm.scheduledTime
-          })
-          
-          ElMessage.success(`已设置 ${selectedJobs.value.length} 个职位的定时投递`)
-          scheduledDeliveryDialogVisible.value = false
-          clearSelection()
-          scheduledForm.scheduledTime = ''
-        } catch (error) {
-          console.error('设置定时投递失败:', error)
-          // 模拟成功
-          ElMessage.success(`已设置 ${selectedJobs.value.length} 个职位的定时投递`)
-          scheduledDeliveryDialogVisible.value = false
-          clearSelection()
-        } finally {
-          schedulingDelivery.value = false
-        }
-      })
-    }
+    const getJobTypeColor = (type) => ({'设计师':'primary','打版师':'success','质检员':'warning','导购':'info','生产管理':'danger'}[type] || 'info')
 
     return {
+      loading,
+      recommendationLoading,
       searchQuery,
       filters,
       jobs,
-      currentPage,
-      pageSize,
+      totalJobs,
+      recommendedJobs,
+      pagination,
       dialogVisible,
       selectedJob,
-      searchJobs,
+      selectedJobs,
+      selectAll,
+      batchApplying,
+      batchApplyDialogVisible,
+      scheduledDeliveryDialogVisible,
+      schedulingDelivery,
+      scheduledFormRef,
+      scheduledForm,
+      scheduledRules,
+      isIndeterminate,
+      handleSearch,
       resetFilters,
       viewJobDetail,
       applyForJob,
       saveJob,
       getJobTypeColor,
-      resetSelectedJob,
       handleSizeChange,
       handleCurrentChange,
-      // 批量投递相关
-      selectedJobs,
-      selectAll,
-      isIndeterminate,
-      batchApplying,
-      batchApplyDialogVisible,
       isJobSelected,
       toggleJobSelection,
       toggleSelectAll,
       clearSelection,
       batchApply,
       confirmBatchApply,
-      // 智能推荐相关
-      recommendedJobs,
-      refreshRecommendations,
-      // 定时投递相关
-      scheduledDeliveryDialogVisible,
-      schedulingDelivery,
-      scheduledFormRef,
-      scheduledForm,
-      scheduledRules,
+      loadRecommendations,
       openScheduledDeliveryDialog,
       disabledDate,
-      disabledHours,
       confirmScheduledDelivery
     }
   }

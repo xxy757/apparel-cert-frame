@@ -292,12 +292,7 @@ export default {
         }
       } catch (error) {
         console.error('检查认证失败:', error)
-        // 模拟数据用于演示
-        newCertifications.value = [
-          { id: 1, name: '服装设计师', level: '中级', date: '2024-12-15' },
-          { id: 2, name: '服装打版师', level: '初级', date: '2024-11-20' }
-        ]
-        showCertSyncTip.value = true
+        ElMessage.error('检查认证失败')
       } finally {
         checkingCerts.value = false
       }

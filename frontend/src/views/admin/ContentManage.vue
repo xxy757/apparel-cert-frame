@@ -383,56 +383,44 @@ export default {
     const pageSize = ref(10)
     const totalContents = ref(0)
     
-    // 模拟内容数据
-    const mockContents = [
-      { id: 1, title: '2024年服装行业技能认证标准更新公告', contentType: 'notice', author: '管理员', summary: '关于2024年服装行业技能认证标准的最新更新公告，请各位考生注意查看。', content: '<p>尊敬的各位用户：</p><p>为了更好地适应服装行业发展需求，我们对2024年技能认证标准进行了更新...</p>', status: 1, viewCount: 1234, createTime: '2024-01-15 10:30:00', isTop: true },
-      { id: 2, title: '服装设计师职业发展前景分析', contentType: 'article', author: '张三', summary: '深入分析服装设计师的职业发展前景和市场需求，为从业者提供参考。', content: '<p>服装设计师是一个充满创意和挑战的职业...</p>', status: 1, viewCount: 856, createTime: '2024-01-16 14:20:00', isTop: false },
-      { id: 3, title: '打版师技能认证考试大纲发布', contentType: 'news', author: '李四', summary: '2024年打版师技能认证考试的详细大纲已发布，请考生及时查看。', content: '<p>2024年打版师技能认证考试大纲如下...</p>', status: 1, viewCount: 623, createTime: '2024-01-17 09:15:00', isTop: false },
-      { id: 4, title: '2023年度技能认证通过率统计报告', contentType: 'article', author: '王五', summary: '2023年度服装行业技能认证的通过率统计和分析报告。', content: '<p>2023年度技能认证统计数据如下...</p>', status: 1, viewCount: 456, createTime: '2024-01-18 16:45:00', isTop: false },
-      { id: 5, title: '质检员认证流程优化通知', contentType: 'notice', author: '管理员', summary: '关于质检员认证流程优化的通知，简化了部分申请步骤。', content: '<p>为提升用户体验，我们对质检员认证流程进行了优化...</p>', status: 1, viewCount: 321, createTime: '2024-01-19 11:20:00', isTop: false },
-      { id: 6, title: '服装行业数字化转型趋势', contentType: 'news', author: '赵六', summary: '服装行业数字化转型的最新趋势和案例分析。', content: '<p>数字化转型正在改变服装行业...</p>', status: 0, viewCount: 0, createTime: '2024-01-20 15:30:00', isTop: false },
-      { id: 7, title: '2024年春季招聘需求预测', contentType: 'article', author: '孙七', summary: '2024年春季服装行业的招聘需求预测分析。', content: '<p>根据市场调研数据...</p>', status: 1, viewCount: 789, createTime: '2024-01-21 08:45:00', isTop: false },
-      { id: 8, title: '技能认证教材更新说明', contentType: 'notice', author: '管理员', summary: '关于技能认证教材更新的说明，新版教材将于下月启用。', content: '<p>新版技能认证教材更新内容如下...</p>', status: 0, viewCount: 0, createTime: '2024-01-22 13:10:00', isTop: false }
-    ]
-    
     // 统计数据
-    const noticeCount = computed(() => mockContents.filter(c => c.contentType === 'notice').length)
-    const articleCount = computed(() => mockContents.filter(c => c.contentType === 'article').length)
-    const newsCount = computed(() => mockContents.filter(c => c.contentType === 'news').length)
-    const totalViews = computed(() => mockContents.reduce((sum, c) => sum + c.viewCount, 0))
+    const noticeCount = computed(() => contents.value.filter(c => c.contentType === 'notice').length)
+    const articleCount = computed(() => contents.value.filter(c => c.contentType === 'article').length)
+    const newsCount = computed(() => contents.value.filter(c => c.contentType === 'news').length)
+    const totalViews = computed(() => contents.value.reduce((sum, c) => sum + (c.viewCount || 0), 0))
     
     onMounted(() => {
       loadContents()
     })
     
-    const loadContents = () => {
-      let filteredContents = [...mockContents]
-      if (activeTab.value !== 'all') {
-        filteredContents = filteredContents.filter(c => c.contentType === activeTab.value)
+    const loadContents = async () => {
+      try {
+        const response = await request.get('/api/announcement/list', {
+          params: {
+            page: currentPage.value,
+            size: pageSize.value,
+            title: searchForm.title,
+            contentType: activeTab.value === 'all' ? '' : activeTab.value,
+            status: searchForm.status
+          }
+        })
+        
+        contents.value = response.data.records || []
+        totalContents.value = response.data.total || 0
+      } catch (error) {
+        console.error('加载内容失败:', error)
+        ElMessage.error('加载内容失败')
+        contents.value = []
+        totalContents.value = 0
       }
-      contents.value = filteredContents
-      totalContents.value = filteredContents.length
     }
     
     const handleTabChange = () => {
-      searchForm.contentType = activeTab.value === 'all' ? '' : activeTab.value
       loadContents()
     }
     
     const searchContents = () => {
-      let filteredContents = [...mockContents]
-      if (searchForm.title) {
-        filteredContents = filteredContents.filter(content => content.title.includes(searchForm.title))
-      }
-      if (activeTab.value !== 'all') {
-        filteredContents = filteredContents.filter(content => content.contentType === activeTab.value)
-      }
-      if (searchForm.status) {
-        filteredContents = filteredContents.filter(content => content.status === parseInt(searchForm.status))
-      }
-      contents.value = filteredContents
-      totalContents.value = filteredContents.length
-      currentPage.value = 1
+      loadContents()
     }
     
     const resetSearch = () => {

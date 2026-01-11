@@ -248,7 +248,15 @@ import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Medal, Bell, Share, CopyDocument, Link } from '@element-plus/icons-vue'
-import request from '../../utils/request'
+import { 
+  getMyApplications, 
+  getMyCertificates, 
+  getCertificationStandards,
+  submitNewApplication,
+  getExpiringCertificates,
+  renewCertificateRequest,
+  getCertificateShareLink
+} from '../../api/certification'
 
 export default {
   name: 'CertificationManage',
@@ -266,67 +274,13 @@ export default {
     
     // 证书分享相关
     const shareDialogVisible = ref(false)
-    const currentShareCert = ref({})
+    const currentShareCert = ref(null)
     const currentShareLink = ref('')
     
-    const applications = ref([
-      {
-        id: 1,
-        standardName: '服装设计师初级认证',
-        jobType: '设计师',
-        level: '初级',
-        status: 3,
-        createTime: '2024-01-15 10:30:00',
-        updateTime: '2024-01-20 14:20:00'
-      },
-      {
-        id: 2,
-        standardName: '服装设计师中级认证',
-        jobType: '设计师',
-        level: '中级',
-        status: 1,
-        createTime: '2024-02-10 09:15:00',
-        updateTime: '2024-02-10 09:15:00'
-      }
-    ])
-    
-    const certificates = ref([
-      {
-        id: 1,
-        name: '服装设计师初级证书',
-        certificateNo: 'AC-2024-0001',
-        standardName: '服装设计师初级认证',
-        jobType: '设计师',
-        level: '初级',
-        issueDate: '2024-01-20',
-        expireDate: '2027-01-20',
-        status: 1
-      }
-    ])
-    
-    const standards = ref([
-      {
-        id: 1,
-        name: '服装设计师初级认证',
-        jobType: '设计师',
-        level: '初级',
-        description: '针对服装设计师的初级技能认证，考核设计基础理论和基本设计能力'
-      },
-      {
-        id: 2,
-        name: '服装设计师中级认证',
-        jobType: '设计师',
-        level: '中级',
-        description: '针对服装设计师的中级技能认证，考核设计创新能力和项目实践经验'
-      },
-      {
-        id: 3,
-        name: '服装设计师高级认证',
-        jobType: '设计师',
-        level: '高级',
-        description: '针对服装设计师的高级技能认证，考核设计理念和品牌策划能力'
-      }
-    ])
+    // 数据
+    const applications = ref([])
+    const certificates = ref([])
+    const standards = ref([])
     
     const applyForm = reactive({
       jobType: '',
@@ -368,15 +322,42 @@ export default {
       }
       return typeMap[status] || 'info'
     }
+
+    // --- API 调用 ---
+    const fetchAllData = async () => {
+      try {
+        const [applicationsRes, certificatesRes, standardsRes] = await Promise.all([
+          getMyApplications(),
+          getMyCertificates(),
+          getCertificationStandards()
+        ]);
+        applications.value = applicationsRes.data || [];
+        certificates.value = certificatesRes.data || [];
+        standards.value = standardsRes.data || [];
+      } catch (error) {
+        ElMessage.error('数据加载失败，请稍后重试。')
+        console.error("Failed to fetch data:", error);
+      }
+    };
     
     const applyCertification = () => {
       applyDialogVisible.value = true
     }
     
-    const submitApplication = () => {
-      // TODO: 调用提交认证申请接口
-      applyDialogVisible.value = false
-      ElMessage.success('认证申请提交成功，待审核')
+    const submitApplication = async () => {
+      if (!applyFormRef.value) return;
+      await applyFormRef.value.validate(async (valid) => {
+        if (valid) {
+          try {
+            await submitNewApplication(applyForm);
+            ElMessage.success('认证申请提交成功，待审核');
+            applyDialogVisible.value = false;
+            await fetchAllData(); // 重新加载数据
+          } catch (error) {
+            ElMessage.error('申请提交失败');
+          }
+        }
+      });
     }
     
     const viewApplication = (row) => {
@@ -385,7 +366,6 @@ export default {
     }
     
     const startExam = (row) => {
-      // 跳转到考试页面
       router.push({
         path: '/personal/exam',
         query: {
@@ -412,46 +392,35 @@ export default {
     
     const shareCertificate = async (cert) => {
       try {
-        // 获取分享链接
-        const response = await request.get('/api/admin/certification/certificate/share-link', {
-          params: { certificateId: cert.id }
-        })
+        const response = await getCertificateShareLink(cert.id)
         const shareLink = response.data?.shareLink || `https://apparelcert.com/verify/${cert.certificateNo}`
         showShareDialog(cert, shareLink)
       } catch (error) {
-        // 模拟分享链接
-        const shareLink = `https://apparelcert.com/verify/${cert.certificateNo}`
-        showShareDialog(cert, shareLink)
+        ElMessage.error('获取分享链接失败')
+        // 作为备用，仍然可以显示一个模拟/占位链接
+        const fallbackLink = `https://apparelcert.com/verify/${cert.certificateNo}`
+        showShareDialog(cert, fallbackLink)
       }
     }
     
-    // 显示分享对话框
     const showShareDialog = (cert, shareLink) => {
       shareDialogVisible.value = true
       currentShareCert.value = cert
       currentShareLink.value = shareLink
     }
     
-    // 复制分享链接
     const copyShareLink = async () => {
       try {
         await navigator.clipboard.writeText(currentShareLink.value)
         ElMessage.success('链接已复制到剪贴板')
-      } catch (error) {
-        // 降级方案
-        const input = document.createElement('input')
-        input.value = currentShareLink.value
-        document.body.appendChild(input)
-        input.select()
-        document.execCommand('copy')
-        document.body.removeChild(input)
-        ElMessage.success('链接已复制到剪贴板')
+      } catch (err) {
+        ElMessage.error('复制失败，请手动复制')
       }
     }
     
-    // 分享到社交平台
     const shareToSocial = (platform) => {
       const cert = currentShareCert.value
+      if (!cert) return;
       const shareText = `我获得了${cert.name}认证！证书编号：${cert.certificateNo}`
       const shareUrl = currentShareLink.value
       
@@ -461,7 +430,6 @@ export default {
           url = `https://service.weibo.com/share/share.php?url=${encodeURIComponent(shareUrl)}&title=${encodeURIComponent(shareText)}`
           break
         case 'wechat':
-          // 微信分享需要生成二维码
           ElMessage.info('请使用微信扫描二维码分享')
           return
         case 'linkedin':
@@ -478,17 +446,13 @@ export default {
     }
     
     const viewStandard = (standard) => {
-      // TODO: 查看认证标准详情
       ElMessage.info('查看认证标准详情功能开发中')
     }
     
-    // 检查即将过期的证书
     const checkExpiringCertificates = async () => {
       checkingExpiry.value = true
       try {
-        const response = await request.get('/api/admin/certification/certificate/expiring', {
-          params: { daysBeforeExpire: 30 }
-        })
+        const response = await getExpiringCertificates(30)
         if (response.data && response.data.length > 0) {
           expiringCertificates.value = response.data.map(cert => ({
             ...cert,
@@ -499,45 +463,37 @@ export default {
           ElMessage.success('所有证书状态正常')
         }
       } catch (error) {
-        // 模拟数据
-        expiringCertificates.value = [
-          { id: 1, name: '服装设计师初级证书', certificateNo: 'AC-2024-0001', expireDate: '2025-01-25', remainingDays: 28 }
-        ]
-        if (expiringCertificates.value.length > 0) {
-          expiryReminderVisible.value = true
-        }
+        ElMessage.error('检查证书有效期失败')
       } finally {
         checkingExpiry.value = false
       }
     }
     
-    // 续期证书
     const renewCertificate = async (cert) => {
       try {
-        await request.post('/api/admin/certification/certificate/renew', null, {
-          params: { certificateId: cert.id, years: 1 }
-        })
+        await renewCertificateRequest({ certificateId: cert.id, years: 1 })
         ElMessage.success('证书续期申请已提交')
         expiryReminderVisible.value = false
+        await checkExpiringCertificates(); // 重新检查
       } catch (error) {
-        ElMessage.info('续期功能开发中')
+        ElMessage.error('续期失败')
       }
     }
     
-    // 跳转到证书管理页面
     const goToRenewalPage = () => {
       activeTab.value = 'certificate'
       expiryReminderVisible.value = false
     }
     
-    // 页面加载时检查证书有效期
     onMounted(() => {
-      checkExpiringCertificates()
+      fetchAllData();
+      checkExpiringCertificates();
     })
     
     return {
       activeTab,
       applyDialogVisible,
+      applyFormRef,
       applyForm,
       applyRules,
       applications,
@@ -554,14 +510,12 @@ export default {
       verifyCertificate,
       shareCertificate,
       viewStandard,
-      // 证书有效期提醒
       expiryReminderVisible,
       expiringCertificates,
       checkingExpiry,
       checkExpiringCertificates,
       renewCertificate,
       goToRenewalPage,
-      // 证书分享
       shareDialogVisible,
       currentShareCert,
       currentShareLink,

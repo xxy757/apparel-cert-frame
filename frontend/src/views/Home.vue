@@ -179,11 +179,12 @@
 </template>
 
 <script>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { User, Briefcase, Medal, Document, Star, Message, Location, Phone, ArrowRight, ArrowDown, SwitchButton } from '@element-plus/icons-vue'
 import request from '@/utils/request'
+import emitter from '@/utils/eventBus'
 
 export default {
   name: 'Home',
@@ -368,6 +369,11 @@ export default {
       // 页面加载时的初始化操作
       console.log('Home page loaded')
       fetchCurrentUser()
+      emitter.on('user-updated', fetchCurrentUser)
+    })
+
+    onUnmounted(() => {
+      emitter.off('user-updated', fetchCurrentUser)
     })
 
     return {

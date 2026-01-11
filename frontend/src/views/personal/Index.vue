@@ -93,11 +93,12 @@
 </template>
 
 <script>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ArrowDown, User, SwitchButton } from '@element-plus/icons-vue'
 import request from '@/utils/request'
+import emitter from '@/utils/eventBus'
 
 export default {
   name: 'PersonalCenter',
@@ -122,6 +123,11 @@ export default {
       
       // 获取当前用户信息
       loadCurrentUser()
+      emitter.on('user-updated', loadCurrentUser)
+    })
+
+    onUnmounted(() => {
+      emitter.off('user-updated', loadCurrentUser)
     })
     
     const loadCurrentUser = async () => {

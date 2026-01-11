@@ -19,6 +19,7 @@
                   type="password"
                   placeholder="请输入密码"
                   autocomplete="new-password"
+                  show-password
                 ></el-input>
               </el-form-item>
               <!-- 登录失败次数限制提示 -->
@@ -65,6 +66,7 @@
                   type="password"
                   placeholder="请输入密码"
                   autocomplete="new-password"
+                  show-password
                 ></el-input>
               </el-form-item>
               <!-- 登录失败次数限制提示 -->
