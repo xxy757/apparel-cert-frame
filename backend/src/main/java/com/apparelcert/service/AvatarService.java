@@ -20,13 +20,7 @@ public interface AvatarService {
     String generateAvatarByUsername(String username);
 
     /**
-     * 生成随机企业Logo URL
-     * @return Logo URL地址
-     */
-    String generateRandomLogo();
-
-    /**
-     * 基于企业名称生成确定性Logo URL
+     * 基于企业名称生成确定性Logo URL（使用卡通风格）
      * @param companyName 企业名称
      * @return Logo URL地址
      */

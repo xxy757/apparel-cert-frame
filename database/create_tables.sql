@@ -417,3 +417,32 @@ CREATE TABLE IF NOT EXISTS application (
     INDEX idx_user_id (user_id),
     INDEX idx_enterprise_id (enterprise_id)
 );
+
+-- ============================================
+-- 管理员用户表
+-- ============================================
+CREATE TABLE IF NOT EXISTS user_admin (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(50) NOT NULL UNIQUE COMMENT '用户名',
+    password VARCHAR(100) NOT NULL COMMENT '密码（BCrypt加密）',
+    name VARCHAR(50) NOT NULL COMMENT '真实姓名',
+    phone VARCHAR(20) COMMENT '手机号',
+    email VARCHAR(50) COMMENT '邮箱',
+    admin_type TINYINT DEFAULT 1 COMMENT '管理员类型：0-超级管理员 1-普通管理员',
+    avatar VARCHAR(200) COMMENT '头像URL',
+    last_login_time DATETIME COMMENT '最后登录时间',
+    last_login_ip VARCHAR(50) COMMENT '最后登录IP',
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    status TINYINT DEFAULT 1 COMMENT '状态：0-禁用 1-启用',
+    INDEX idx_username (username),
+    INDEX idx_email (email),
+    INDEX idx_admin_type (admin_type),
+    INDEX idx_status (status)
+);
+
+-- 插入默认超级管理员（密码：admin123，需要BCrypt加密）
+-- 实际使用时请修改默认密码
+INSERT INTO user_admin (username, password, name, phone, email, admin_type, status)
+VALUES ('admin', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVKIUi', '超级管理员', '13800138000', 'admin@example.com', 0, 1)
+ON DUPLICATE KEY UPDATE username=username;

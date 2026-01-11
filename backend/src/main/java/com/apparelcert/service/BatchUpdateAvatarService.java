@@ -54,30 +54,30 @@ public class BatchUpdateAvatarService {
     }
 
     /**
-     * 为企业用户生成Logo
+     * 为企业用户生成头像（使用卡通头像风格）
      */
     public void updateEnterpriseUserLogos() {
         // 获取所有企业用户
         List<UserEnterprise> users = userEnterpriseMapper.selectList(null);
-        
-        System.out.println("开始为企业用户生成Logo，共找到 " + users.size() + " 个用户");
-        
+
+        System.out.println("开始为企业用户生成头像，共找到 " + users.size() + " 个用户");
+
         int updatedCount = 0;
         for (UserEnterprise user : users) {
             // 检查是否已有Logo
             if (user.getLogo() == null || user.getLogo().trim().isEmpty()) {
-                // 生成基于企业名称的Logo URL
-                String logoUrl = avatarService.generateLogoByCompanyName(user.getCompanyName());
-                
+                // 生成基于用户名的头像URL（与个人用户使用相同的卡通风格）
+                String logoUrl = avatarService.generateAvatarByUsername(user.getUsername());
+
                 // 更新Logo
                 user.setLogo(logoUrl);
                 userEnterpriseMapper.updateById(user);
-                
+
                 updatedCount++;
-                System.out.println("为企业用户 " + user.getUsername() + " 生成Logo: " + logoUrl);
+                System.out.println("为企业用户 " + user.getUsername() + " 生成头像: " + logoUrl);
             }
         }
-        
-        System.out.println("企业用户Logo更新完成，共更新 " + updatedCount + " 个用户");
+
+        System.out.println("企业用户头像更新完成，共更新 " + updatedCount + " 个用户");
     }
 }

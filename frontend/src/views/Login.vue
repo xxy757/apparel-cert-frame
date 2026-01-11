@@ -98,6 +98,49 @@
               </div>
             </el-form>
           </el-tab-pane>
+          <el-tab-pane label="管理员登录" name="admin">
+            <el-form ref="adminFormRef" :model="adminForm" :rules="rules" label-width="80px">
+              <el-form-item label="用户名" prop="username">
+                <el-input
+                  v-model="adminForm.username"
+                  placeholder="请输入管理员用户名"
+                  autocomplete="off"
+                ></el-input>
+              </el-form-item>
+              <el-form-item label="密码" prop="password">
+                <el-input
+                  v-model="adminForm.password"
+                  type="password"
+                  placeholder="请输入密码"
+                  autocomplete="new-password"
+                  show-password
+                ></el-input>
+              </el-form-item>
+              <!-- 登录失败次数限制提示 -->
+              <div v-if="loginAttempts.admin > 0" class="login-warning">
+                <el-alert
+                  v-if="loginAttempts.admin < maxAttempts"
+                  :title="`登录失败，还剩 ${maxAttempts - loginAttempts.admin} 次尝试机会`"
+                  type="warning"
+                  :closable="false"
+                  show-icon
+                />
+                <el-alert
+                  v-else
+                  :title="`账号已锁定，请 ${lockCountdown} 秒后重试`"
+                  type="error"
+                  :closable="false"
+                  show-icon
+                />
+              </div>
+              <el-form-item>
+                <div class="login-actions">
+                  <el-button type="primary" @click="login('admin')" :loading="loading" :disabled="isLocked">登录</el-button>
+                  <el-button @click="resetForm('adminForm')">重置</el-button>
+                </div>
+              </el-form-item>
+            </el-form>
+          </el-tab-pane>
         </el-tabs>
       </div>
     </div>
@@ -124,19 +167,26 @@ export default {
       username: '',
       password: ''
     })
+    const adminForm = reactive({
+      username: '',
+      password: ''
+    })
     const personalFormRef = ref(null)
     const enterpriseFormRef = ref(null)
+    const adminFormRef = ref(null)
 
     // 登录失败次数限制相关
     const maxAttempts = 5
     const lockDuration = 300 // 锁定时间（秒）
     const loginAttempts = reactive({
       personal: 0,
-      enterprise: 0
+      enterprise: 0,
+      admin: 0
     })
     const lockTime = reactive({
       personal: null,
-      enterprise: null
+      enterprise: null,
+      admin: null
     })
     const lockCountdown = ref(0)
     let countdownTimer = null
@@ -200,8 +250,17 @@ export default {
         return
       }
 
-      const formRef = type === 'personal' ? personalFormRef : enterpriseFormRef
-      const form = type === 'personal' ? personalForm : enterpriseForm
+      let formRef, form
+      if (type === 'personal') {
+        formRef = personalFormRef
+        form = personalForm
+      } else if (type === 'enterprise') {
+        formRef = enterpriseFormRef
+        form = enterpriseForm
+      } else if (type === 'admin') {
+        formRef = adminFormRef
+        form = adminForm
+      }
 
       if (!formRef.value) {
         ElMessage.error('表单未加载')
@@ -219,7 +278,9 @@ export default {
 
         try {
           // 根据用户类型调用不同的登录接口
-          const loginUrl = type === 'personal' ? '/auth/login/personal' : '/auth/login/enterprise'
+          const loginUrl = type === 'personal' ? '/auth/login/personal' :
+                          type === 'enterprise' ? '/auth/login/enterprise' :
+                          '/auth/login/admin'
           const response = await request.post(loginUrl, {
             username: form.username,
             password: form.password
@@ -231,21 +292,23 @@ export default {
             // 登录成功，重置失败次数
             loginAttempts[type] = 0
             lockTime[type] = null
-            
+
             localStorage.setItem('token', response.data.token)
-            localStorage.setItem('userType', response.data.userType || (type === 'personal' ? '1' : '2'))
+            localStorage.setItem('userType', response.data.userType || (type === 'personal' ? '1' : type === 'enterprise' ? '2' : '3'))
             localStorage.setItem('userId', response.data.userId || '')
             localStorage.setItem('username', form.username)
 
             ElMessage.success('登录成功')
 
             // 根据用户类型跳转到对应的中心页面
-            const redirectPath = type === 'personal' ? '/personal/resume' : '/enterprise/job'
+            const redirectPath = type === 'personal' ? '/personal/resume' :
+                                type === 'enterprise' ? '/enterprise/job' :
+                                '/admin/dashboard'
             router.replace(redirectPath)
           } else {
             // 登录失败，增加失败次数
             loginAttempts[type]++
-            
+
             if (loginAttempts[type] >= maxAttempts) {
               startCountdown(type)
               ElMessage.error(`登录失败次数过多，账号已锁定 ${lockDuration} 秒`)
@@ -257,7 +320,7 @@ export default {
           console.error('登录失败:', error)
           // 登录失败，增加失败次数
           loginAttempts[type]++
-          
+
           if (loginAttempts[type] >= maxAttempts) {
             startCountdown(type)
             ElMessage.error(`登录失败次数过多，账号已锁定 ${lockDuration} 秒`)
@@ -273,10 +336,14 @@ export default {
         personalFormRef.value.resetFields()
         // 强制清空密码字段
         personalForm.password = ''
-      } else {
+      } else if (formName === 'enterpriseForm') {
         enterpriseFormRef.value.resetFields()
         // 强制清空密码字段
         enterpriseForm.password = ''
+      } else if (formName === 'adminForm') {
+        adminFormRef.value.resetFields()
+        // 强制清空密码字段
+        adminForm.password = ''
       }
     }
 
@@ -295,6 +362,10 @@ export default {
       enterpriseForm.username = ''
       enterpriseForm.password = ''
 
+      // 清空管理员表单
+      adminForm.username = ''
+      adminForm.password = ''
+
       // 重置表单验证状态
       if (personalFormRef.value) {
         personalFormRef.value.clearValidate()
@@ -302,26 +373,36 @@ export default {
       if (enterpriseFormRef.value) {
         enterpriseFormRef.value.clearValidate()
       }
+      if (adminFormRef.value) {
+        adminFormRef.value.clearValidate()
+      }
     }
 
     // 监听标签页切换，清空另一个表单的数据
     watch(activeTab, (_newTab, oldTab) => {
       // 切换时检查新标签页的锁定状态
       checkLockStatus(_newTab)
-      
+
       if (oldTab === 'personal') {
-        // 从个人登录切换到企业登录，清空个人表单
+        // 从个人登录切换，清空个人表单
         personalForm.username = ''
         personalForm.password = ''
         if (personalFormRef.value) {
           personalFormRef.value.clearValidate()
         }
       } else if (oldTab === 'enterprise') {
-        // 从企业登录切换到个人登录，清空企业表单
+        // 从企业登录切换，清空企业表单
         enterpriseForm.username = ''
         enterpriseForm.password = ''
         if (enterpriseFormRef.value) {
           enterpriseFormRef.value.clearValidate()
+        }
+      } else if (oldTab === 'admin') {
+        // 从管理员登录切换，清空管理员表单
+        adminForm.username = ''
+        adminForm.password = ''
+        if (adminFormRef.value) {
+          adminFormRef.value.clearValidate()
         }
       }
     })
@@ -334,10 +415,11 @@ export default {
 
       // 清空所有表单
       clearAllForms()
-      
+
       // 检查锁定状态
       checkLockStatus('personal')
       checkLockStatus('enterprise')
+      checkLockStatus('admin')
     })
 
     // 组件卸载前清空表单数据
@@ -353,8 +435,10 @@ export default {
       loading,
       personalForm,
       enterpriseForm,
+      adminForm,
       personalFormRef,
       enterpriseFormRef,
+      adminFormRef,
       rules,
       login,
       resetForm,

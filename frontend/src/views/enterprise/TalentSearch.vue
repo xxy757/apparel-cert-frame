@@ -310,10 +310,11 @@
 <script setup>
 import { ref, reactive, computed } from 'vue'
 import { ElMessage } from 'element-plus'
-import { 
-  Search, Filter, Location, Briefcase, School, View, ChatDotRound, 
-  Star, StarFilled, Flag, Close, Memo, Edit 
+import {
+  Search, Filter, Location, Briefcase, School, View, ChatDotRound,
+  Star, StarFilled, Flag, Close, Memo, Edit
 } from '@element-plus/icons-vue'
+import { searchTalents as apiSearchTalents, getCurrentUser } from '@/api/enterprise'
 
 const searchKeyword = ref('')
 const selectedTag = ref('')
@@ -321,12 +322,12 @@ const filterExpanded = ref([])
 const sortBy = ref('match')
 const currentPage = ref(1)
 const pageSize = ref(10)
-const total = ref(50)
-const totalTalents = ref(12580)
-const activeToday = ref(1256)
+const total = ref(0)
+const totalTalents = ref(0)
+const activeToday = ref(0)
 const showCollectedOnly = ref(false)
 
-const hotTags = ['服装设计师', '版型师', '买手', '质检员', '生产管理']
+const hotTags = []
 
 const filters = reactive({
   jobType: '',
@@ -360,13 +361,7 @@ const filteredTalents = computed(() => {
   return result
 })
 
-const talents = ref([
-  { id: 1, name: '张小雅', avatar: '', jobTitle: '高级服装设计师', certLevel: '高级认证', city: '上海', experience: '5年', education: '本科', expectedSalary: '20K-30K', skills: ['女装设计', 'AI设计', '面料选择', '色彩搭配'], intro: '5年高端女装设计经验，擅长原创设计和品牌策划，曾主导多个系列产品开发。', isOnline: true, collected: false, intention: '', note: '' },
-  { id: 2, name: '李明华', avatar: '', jobTitle: '资深版型师', certLevel: '中级认证', city: '杭州', experience: '8年', education: '大专', expectedSalary: '15K-20K', skills: ['CAD制版', '立体裁剪', '样衣制作'], intro: '8年版型工作经验，精通各类服装版型开发，熟练使用ET、格柏等制版软件。', isOnline: false, collected: true, intention: 'high', note: '技术能力强，可重点跟进' },
-  { id: 3, name: '王雨晴', avatar: '', jobTitle: '时装买手', certLevel: '初级认证', city: '深圳', experience: '3年', education: '本科', expectedSalary: '12K-18K', skills: ['市场分析', '品牌采购', '趋势预测'], intro: '3年时装买手经验，对国际时尚趋势敏感，擅长品牌组合和商品策划。', isOnline: true, collected: false, intention: 'medium', note: '' },
-  { id: 4, name: '陈思远', avatar: '', jobTitle: '服装质检主管', certLevel: '高级认证', city: '广州', experience: '10年', education: '本科', expectedSalary: '18K-25K', skills: ['质量管理', 'ISO认证', '供应商审核', '面料检测'], intro: '10年服装质检经验，熟悉国内外质量标准，曾负责多个大型品牌的质量管理体系建设。', isOnline: true, collected: true, intention: 'high', note: '经验丰富，适合质检主管岗位' },
-  { id: 5, name: '刘佳琪', avatar: '', jobTitle: '服装设计师', certLevel: '中级认证', city: '北京', experience: '4年', education: '硕士', expectedSalary: '15K-22K', skills: ['童装设计', '图案设计', 'PS', 'AI'], intro: '4年童装设计经验，擅长可爱风格和功能性童装设计，有多款爆款产品设计经验。', isOnline: false, collected: false, intention: '', note: '' }
-])
+const talents = ref([])
 
 // 对话框状态
 const resumeDialogVisible = ref(false)
@@ -380,8 +375,31 @@ const selectTag = (tag) => {
   searchTalents()
 }
 
-const searchTalents = () => {
-  ElMessage.info('搜索功能已触发')
+const searchTalents = async () => {
+  try {
+    ElMessage.info('正在搜索人才...')
+    const response = await apiSearchTalents(
+      searchKeyword.value,
+      filters.jobType,
+      filters.education,
+      filters.certLevel
+    )
+
+    if (response && response.data) {
+      talents.value = response.data
+      total.value = response.data.length
+      ElMessage.success(`找到 ${response.data.length} 位人才`)
+    } else {
+      talents.value = []
+      total.value = 0
+      ElMessage.info('未找到匹配的人才')
+    }
+  } catch (error) {
+    console.error('搜索人才失败:', error)
+    talents.value = []
+    total.value = 0
+    ElMessage.error('搜索失败，请稍后重试')
+  }
 }
 
 const resetFilters = () => {

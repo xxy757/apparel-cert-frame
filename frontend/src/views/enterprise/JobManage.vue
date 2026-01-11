@@ -271,10 +271,20 @@
 </template>
 
 <script>
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Search, ArrowDown, Top } from '@element-plus/icons-vue'
-import request from '../../utils/request'
+import {
+  getEnterpriseJobs,
+  publishJob,
+  updateJob,
+  offlineJob,
+  batchUpdateJobStatus,
+  batchDeleteJobs,
+  topJob,
+  getJobStatistics
+} from '@/api/enterprise'
+import { getCurrentUser } from '@/api/enterprise'
 
 export default {
   name: 'JobManage',
@@ -331,73 +341,66 @@ export default {
       ]
     }
     
-    const jobs = ref([
-      {
-        id: 1,
-        title: '服装设计师',
-        jobType: '设计师',
-        salaryMin: 8,
-        salaryMax: 15,
-        workLocation: '北京',
-        workType: '全职',
-        recruitNum: 2,
-        skills: ['服装设计', 'Adobe Illustrator', 'Adobe Photoshop'],
-        description: '负责品牌服装的设计开发，参与产品规划，跟进样衣制作过程',
-        requirements: '1. 服装设计相关专业，2年以上工作经验\n2. 熟练使用AI、PS等设计软件\n3. 有独立设计能力和创新思维',
-        benefits: '五险一金、带薪年假、节日福利、绩效奖金',
-        status: 1,
-        viewCount: 120,
-        applyCount: 25,
-        createTime: '2024-01-15 10:30:00',
-        isUrgent: true,
-        isTop: true
-      },
-      {
-        id: 2,
-        title: '服装打版师',
-        jobType: '打版师',
-        salaryMin: 6,
-        salaryMax: 12,
-        workLocation: '上海',
-        workType: '全职',
-        recruitNum: 1,
-        skills: ['服装打版'],
-        description: '负责服装版型设计，根据设计稿制作纸样，跟进生产过程',
-        requirements: '1. 服装打版相关专业，3年以上工作经验\n2. 熟练使用打版软件\n3. 熟悉服装生产工艺',
-        benefits: '五险一金、年终奖、员工旅游',
-        status: 1,
-        viewCount: 85,
-        applyCount: 18,
-        createTime: '2024-01-10 14:20:00',
-        isUrgent: false,
-        isTop: false
-      },
-      {
-        id: 3,
-        title: '服装质检员',
-        jobType: '质检员',
-        salaryMin: 5,
-        salaryMax: 8,
-        workLocation: '广州',
-        workType: '全职',
-        recruitNum: 3,
-        skills: ['质量检测'],
-        description: '负责服装产品的质量检验，确保产品符合质量标准',
-        requirements: '1. 有服装质检经验优先\n2. 工作认真负责\n3. 能适应加班',
-        benefits: '五险一金、包吃住、年终奖',
-        status: 2,
-        viewCount: 56,
-        applyCount: 12,
-        createTime: '2024-01-08 09:00:00',
-        isUrgent: false,
-        isTop: false
-      }
-    ])
-    
+    const loading = ref(false)
+    const enterpriseId = ref(null)
+
+    const jobs = ref([])
+
     const currentPage = ref(1)
     const pageSize = ref(10)
-    const totalJobs = ref(jobs.value.length)
-    
+    const totalJobs = ref(0)
+
+    // 加载职位数据
+    const loadJobs = async () => {
+      if (!enterpriseId.value) {
+        ElMessage.warning('请先登录企业账号')
+        return
+      }
+
+      loading.value = true
+      try {
+        const response = await getEnterpriseJobs(
+          currentPage.value,
+          pageSize.value,
+          enterpriseId.value,
+          searchForm.status || undefined
+        )
+
+        if (response.data) {
+          jobs.value = response.data.records || response.data.list || []
+          totalJobs.value = response.data.total || 0
+        }
+      } catch (error) {
+        console.error('加载职位失败:', error)
+        ElMessage.error('加载职位数据失败')
+      } finally {
+        loading.value = false
+      }
+    }
+
+    // 初始化企业ID
+    const initEnterpriseId = async () => {
+      try {
+        const response = await getCurrentUser()
+        if (response.data && response.data.enterpriseId) {
+          enterpriseId.value = response.data.enterpriseId
+          // 加载职位数据
+          await loadJobs()
+        } else {
+          ElMessage.error('无法获取企业信息，请重新登录')
+          // 这里可以根据实际路由跳转到登录页
+        }
+      } catch (error) {
+        console.error('获取用户信息失败:', error)
+        ElMessage.error('获取用户信息失败')
+      }
+    }
+
+    // 组件挂载时初始化
+    onMounted(() => {
+      initEnterpriseId()
+    })
+
     const getStatusText = (status) => {
       const statusMap = {
         0: '已结束',
@@ -438,27 +441,53 @@ export default {
       createJobDialogVisible.value = true
     }
     
-    const submitJobForm = () => {
-      jobFormRef.value?.validate((valid) => {
-        if (valid) {
-          if (isEditing.value) {
+    const submitJobForm = async () => {
+      const valid = await jobFormRef.value?.validate()
+      if (!valid) return
+
+      try {
+        let result
+        if (isEditing.value) {
+          // 更新职位
+          result = await updateJob({
+            ...jobForm,
+            enterpriseId: enterpriseId.value
+          })
+          if (result.code === 200) {
             ElMessage.success('职位修改成功')
-          } else {
+          }
+        } else {
+          // 发布新职位
+          result = await publishJob({
+            ...jobForm,
+            enterpriseId: enterpriseId.value,
+            status: 1, // 招聘中
+            views: 0,
+            applications: 0
+          })
+          if (result.code === 200) {
             ElMessage.success('职位发布成功')
           }
-          createJobDialogVisible.value = false
         }
-      })
+        createJobDialogVisible.value = false
+        // 重新加载职位列表
+        await loadJobs()
+      } catch (error) {
+        console.error('提交职位失败:', error)
+        ElMessage.error(isEditing.value ? '职位修改失败' : '职位发布失败')
+      }
     }
     
     const searchJobs = () => {
-      console.log('搜索职位:', searchForm)
-      ElMessage.info('搜索功能已触发')
+      currentPage.value = 1
+      loadJobs()
     }
     
     const resetSearch = () => {
       searchForm.title = ''
       searchForm.status = ''
+      currentPage.value = 1
+      loadJobs()
     }
     
     const viewJobDetails = (job) => {
@@ -487,41 +516,69 @@ export default {
       createJobDialogVisible.value = true
     }
     
-    const handleCommand = (command, job) => {
+    const handleCommand = async (command, job) => {
       switch (command) {
         case 'pause':
-          job.status = 2
-          ElMessage.success('职位已暂停招聘')
+          try {
+            await batchUpdateJobStatus([job.id], 2)
+            ElMessage.success('职位已暂停招聘')
+            await loadJobs()
+          } catch (error) {
+            console.error('暂停职位失败:', error)
+            ElMessage.error('暂停职位失败')
+          }
           break
         case 'resume':
-          job.status = 1
-          ElMessage.success('职位已恢复招聘')
+          try {
+            await batchUpdateJobStatus([job.id], 1)
+            ElMessage.success('职位已恢复招聘')
+            await loadJobs()
+          } catch (error) {
+            console.error('恢复职位失败:', error)
+            ElMessage.error('恢复职位失败')
+          }
           break
         case 'stop':
-          job.status = 0
-          ElMessage.success('职位已结束招聘')
+          try {
+            await offlineJob(job.id)
+            ElMessage.success('职位已结束招聘')
+            await loadJobs()
+          } catch (error) {
+            console.error('结束职位失败:', error)
+            ElMessage.error('结束职位失败')
+          }
           break
         case 'restart':
-          job.status = 1
-          ElMessage.success('职位已重新开始招聘')
+          try {
+            await batchUpdateJobStatus([job.id], 1)
+            ElMessage.success('职位已重新开始招聘')
+            await loadJobs()
+          } catch (error) {
+            console.error('重新开始招聘失败:', error)
+            ElMessage.error('重新开始招聘失败')
+          }
           break
         case 'refresh':
+          await loadJobs()
           ElMessage.success('职位已刷新')
           break
         case 'top':
-          toggleJobTop(job)
+          await toggleJobTop(job)
           break
         case 'delete':
           ElMessageBox.confirm('确定要删除该职位吗？', '删除确认', {
             confirmButtonText: '确定',
             cancelButtonText: '取消',
             type: 'warning'
-          }).then(() => {
-            const index = jobs.value.findIndex(j => j.id === job.id)
-            if (index > -1) {
-              jobs.value.splice(index, 1)
+          }).then(async () => {
+            try {
+              await batchDeleteJobs([job.id])
+              ElMessage.success('职位已删除')
+              await loadJobs()
+            } catch (error) {
+              console.error('删除职位失败:', error)
+              ElMessage.error('删除职位失败')
             }
-            ElMessage.success('职位已删除')
           }).catch(() => {})
           break
       }
@@ -531,28 +588,13 @@ export default {
     const toggleJobTop = async (job) => {
       const newTopStatus = !job.isTop
       try {
-        await request.put(`/api/enterprise/job/top`, {
-          jobId: job.id,
-          isTop: newTopStatus
-        })
-        job.isTop = newTopStatus
-        // 重新排序，置顶的排在前面
-        jobs.value.sort((a, b) => {
-          if (a.isTop && !b.isTop) return -1
-          if (!a.isTop && b.isTop) return 1
-          return 0
-        })
+        await topJob(job.id, newTopStatus ? 1 : 0)
+        // 重新加载列表以获取最新排序
+        await loadJobs()
         ElMessage.success(newTopStatus ? '职位已置顶' : '已取消置顶')
       } catch (error) {
         console.error('置顶操作失败:', error)
-        // 模拟成功
-        job.isTop = newTopStatus
-        jobs.value.sort((a, b) => {
-          if (a.isTop && !b.isTop) return -1
-          if (!a.isTop && b.isTop) return 1
-          return 0
-        })
-        ElMessage.success(newTopStatus ? '职位已置顶' : '已取消置顶')
+        ElMessage.error('置顶操作失败')
       }
     }
     
@@ -564,40 +606,63 @@ export default {
       selectedJobs.value = []
     }
     
-    const batchPause = () => {
+    const batchPause = async () => {
+      if (selectedJobs.value.length === 0) {
+        ElMessage.warning('请先选择要暂停的职位')
+        return
+      }
+
       ElMessageBox.confirm(`确定要暂停选中的 ${selectedJobs.value.length} 个职位吗？`, '批量暂停', {
         confirmButtonText: '确定',
         cancelButtonText: '取消',
         type: 'warning'
-      }).then(() => {
-        selectedJobs.value.forEach(job => {
-          job.status = 2
-        })
-        ElMessage.success(`已暂停 ${selectedJobs.value.length} 个职位`)
-        clearSelection()
+      }).then(async () => {
+        try {
+          const jobIds = selectedJobs.value.map(job => job.id)
+          await batchUpdateJobStatus(jobIds, 2)
+          ElMessage.success(`已暂停 ${selectedJobs.value.length} 个职位`)
+          await loadJobs()
+          clearSelection()
+        } catch (error) {
+          console.error('批量暂停失败:', error)
+          ElMessage.error('批量暂停失败')
+        }
       }).catch(() => {})
     }
     
-    const batchDelete = () => {
+    const batchDelete = async () => {
+      if (selectedJobs.value.length === 0) {
+        ElMessage.warning('请先选择要删除的职位')
+        return
+      }
+
       ElMessageBox.confirm(`确定要删除选中的 ${selectedJobs.value.length} 个职位吗？此操作不可恢复。`, '批量删除', {
         confirmButtonText: '确定',
         cancelButtonText: '取消',
         type: 'error'
-      }).then(() => {
-        const idsToDelete = selectedJobs.value.map(j => j.id)
-        jobs.value = jobs.value.filter(j => !idsToDelete.includes(j.id))
-        ElMessage.success(`已删除 ${selectedJobs.value.length} 个职位`)
-        clearSelection()
+      }).then(async () => {
+        try {
+          const jobIds = selectedJobs.value.map(job => job.id)
+          await batchDeleteJobs(jobIds)
+          ElMessage.success(`已删除 ${selectedJobs.value.length} 个职位`)
+          await loadJobs()
+          clearSelection()
+        } catch (error) {
+          console.error('批量删除失败:', error)
+          ElMessage.error('批量删除失败')
+        }
       }).catch(() => {})
     }
     
     const handleSizeChange = (size) => {
       pageSize.value = size
       currentPage.value = 1
+      loadJobs()
     }
     
     const handleCurrentChange = (current) => {
       currentPage.value = current
+      loadJobs()
     }
     
     return {

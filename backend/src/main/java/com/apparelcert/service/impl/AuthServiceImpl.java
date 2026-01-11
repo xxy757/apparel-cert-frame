@@ -1,7 +1,9 @@
 package com.apparelcert.service.impl;
 
+import com.apparelcert.entity.UserAdmin;
 import com.apparelcert.entity.UserEnterprise;
 import com.apparelcert.entity.UserPersonal;
+import com.apparelcert.mapper.UserAdminMapper;
 import com.apparelcert.mapper.UserEnterpriseMapper;
 import com.apparelcert.mapper.UserPersonalMapper;
 import com.apparelcert.service.AuthService;
@@ -30,6 +32,9 @@ public class AuthServiceImpl implements AuthService {
 
     @Autowired
     private UserEnterpriseMapper userEnterpriseMapper;
+
+    @Autowired
+    private UserAdminMapper userAdminMapper;
 
     @Autowired
     private AvatarService avatarService;
@@ -222,6 +227,49 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
+    public Map<String, Object> loginAdmin(String username, String password) {
+        Map<String, Object> result = new HashMap<>();
+
+
+        // 查询管理员
+        UserAdmin user = userAdminMapper.findByUsername(username);
+        if (user == null) {
+            result.put("success", false);
+            result.put("message", "管理员不存在");
+            return result;
+        }
+
+        // 检查管理员状态
+        if (user.getStatus() != null && user.getStatus() == 0) {
+            result.put("success", false);
+            result.put("message", "账户已被禁用");
+            return result;
+        }
+
+        // 验证密码
+        if (!passwordEncoder.matches(password, user.getPassword())) {
+            result.put("success", false);
+            result.put("message", "密码错误");
+            return result;
+        }
+
+        // 生成token（userType=3表示管理员）
+        String token = jwtUtil.generateToken(user.getId(), 3);
+        result.put("success", true);
+        result.put("token", token);
+        result.put("userId", user.getId());
+        result.put("userType", 3);
+        result.put("message", "登录成功");
+        result.put("username", user.getUsername());
+        result.put("name", user.getName());
+        result.put("email", user.getEmail());
+        result.put("adminType", user.getAdminType());
+        result.put("avatar", user.getAvatar());
+
+        return result;
+    }
+
+    @Override
     public boolean forgetPassword(String username, String email, Integer userType) {
         // 验证用户信息
         if (userType == 1) {
@@ -322,6 +370,21 @@ public class AuthServiceImpl implements AuthService {
                 result.put("contactPhone", user.getContactPhone());
                 result.put("logo", user.getLogo());
                 result.put("authStatus", user.getAuthStatus());
+            } else {
+                result.put("success", false);
+                result.put("message", "用户不存在");
+            }
+        } else if (userType == 3) {
+            // 管理员用户
+            UserAdmin user = userAdminMapper.selectById(userId);
+            if (user != null) {
+                result.put("username", user.getUsername());
+                result.put("name", user.getName());
+                result.put("email", user.getEmail());
+                result.put("phone", user.getPhone());
+                result.put("avatar", user.getAvatar());
+                result.put("adminType", user.getAdminType());
+                result.put("lastLoginTime", user.getLastLoginTime());
             } else {
                 result.put("success", false);
                 result.put("message", "用户不存在");

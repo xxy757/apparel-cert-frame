@@ -1,5 +1,6 @@
 package com.apparelcert.service;
 
+import com.apparelcert.entity.UserAdmin;
 import com.apparelcert.entity.UserEnterprise;
 import com.apparelcert.entity.UserPersonal;
 
@@ -29,6 +30,11 @@ public interface AuthService {
      * 企业用户登录
      */
     Map<String, Object> loginEnterprise(String username, String password);
+
+    /**
+     * 管理员用户登录
+     */
+    Map<String, Object> loginAdmin(String username, String password);
 
     /**
      * 忘记密码

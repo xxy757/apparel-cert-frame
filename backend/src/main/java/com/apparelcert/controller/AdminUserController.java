@@ -1,13 +1,17 @@
 package com.apparelcert.controller;
 
 import com.apparelcert.common.Result;
+import com.apparelcert.entity.UserAdmin;
 import com.apparelcert.entity.UserEnterprise;
 import com.apparelcert.entity.UserPersonal;
+import com.apparelcert.mapper.UserAdminMapper;
 import com.apparelcert.mapper.UserEnterpriseMapper;
 import com.apparelcert.mapper.UserPersonalMapper;
+import com.apparelcert.service.UserAdminService;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -25,6 +29,14 @@ public class AdminUserController {
 
     @Autowired
     private UserEnterpriseMapper userEnterpriseMapper;
+
+    @Autowired
+    private UserAdminMapper userAdminMapper;
+
+    @Autowired
+    private UserAdminService userAdminService;
+
+    private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
     /**
      * 获取个人用户列表
@@ -335,5 +347,167 @@ public class AdminUserController {
             }
         }
         return Result.success(count);
+    }
+
+    // ==================== 管理员用户管理接口 ====================
+
+    /**
+     * 创建管理员用户（仅超级管理员可用）
+     */
+    @PostMapping("/admin")
+    public Result<Boolean> createAdmin(@RequestBody UserAdmin userAdmin) {
+        // 检查用户名是否已存在
+        UserAdmin existingAdmin = userAdminMapper.findByUsername(userAdmin.getUsername());
+        if (existingAdmin != null) {
+            return Result.error(400, "用户名已存在");
+        }
+
+        // 检查邮箱是否已存在
+        if (userAdmin.getEmail() != null && !userAdmin.getEmail().isEmpty()) {
+            UserAdmin existingEmail = userAdminMapper.findByEmail(userAdmin.getEmail());
+            if (existingEmail != null) {
+                return Result.error(400, "邮箱已被注册");
+            }
+        }
+
+        // 加密密码
+        String encodedPassword = passwordEncoder.encode(userAdmin.getPassword());
+        userAdmin.setPassword(encodedPassword);
+
+        // 设置默认值
+        if (userAdmin.getAdminType() == null) {
+            userAdmin.setAdminType(1); // 默认为普通管理员
+        }
+        userAdmin.setStatus(1); // 默认启用
+
+        int result = userAdminMapper.insert(userAdmin);
+        if (result > 0) {
+            return Result.success(true);
+        } else {
+            return Result.error(500, "创建管理员失败");
+        }
+    }
+
+    /**
+     * 获取管理员用户列表
+     */
+    @GetMapping("/admin")
+    public Result<Page<UserAdmin>> getAdminUsers(
+            @RequestParam(defaultValue = "1") Integer page,
+            @RequestParam(defaultValue = "10") Integer size,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Integer adminType,
+            @RequestParam(required = false) Integer status) {
+        Page<UserAdmin> pageInfo = new Page<>(page, size);
+        QueryWrapper<UserAdmin> wrapper = new QueryWrapper<>();
+
+        if (keyword != null && !keyword.isEmpty()) {
+            wrapper.and(w -> w.like("username", keyword)
+                .or().like("name", keyword)
+                .or().like("email", keyword)
+                .or().like("phone", keyword));
+        }
+        if (adminType != null) {
+            wrapper.eq("admin_type", adminType);
+        }
+        if (status != null) {
+            wrapper.eq("status", status);
+        }
+
+        wrapper.orderByDesc("create_time");
+        Page<UserAdmin> result = userAdminMapper.selectPage(pageInfo, wrapper);
+
+        // 隐藏密码
+        result.getRecords().forEach(u -> u.setPassword(null));
+
+        return Result.success(result);
+    }
+
+    /**
+     * 获取管理员用户详情
+     */
+    @GetMapping("/admin/detail")
+    public Result<UserAdmin> getAdminUserDetail(@RequestParam Long userId) {
+        UserAdmin user = userAdminMapper.selectById(userId);
+        if (user != null) {
+            user.setPassword(null);
+        }
+        return Result.success(user);
+    }
+
+    /**
+     * 更新管理员用户信息
+     */
+    @PutMapping("/admin")
+    public Result<Boolean> updateAdmin(@RequestBody UserAdmin userAdmin) {
+        // 不允许通过此接口修改密码
+        userAdmin.setPassword(null);
+
+        int result = userAdminMapper.updateById(userAdmin);
+        return Result.success(result > 0);
+    }
+
+    /**
+     * 管理员修改自己的密码
+     */
+    @PutMapping("/admin/change-password")
+    public Result<Boolean> changeAdminPassword(@RequestBody Map<String, String> params) {
+        Long adminId = Long.parseLong(params.get("adminId"));
+        String oldPassword = params.get("oldPassword");
+        String newPassword = params.get("newPassword");
+
+        if (oldPassword == null || newPassword == null) {
+            return Result.error(400, "参数不完整");
+        }
+
+        boolean result = userAdminService.changePassword(adminId, oldPassword, newPassword);
+        if (result) {
+            return Result.success(true);
+        } else {
+            return Result.error(400, "旧密码错误或修改失败");
+        }
+    }
+
+    /**
+     * 重置管理员密码（超级管理员可用）
+     */
+    @PutMapping("/admin/reset-password")
+    public Result<Boolean> resetAdminPassword(
+            @RequestParam Long adminId,
+            @RequestParam String newPassword) {
+        UserAdmin admin = userAdminMapper.selectById(adminId);
+        if (admin == null) {
+            return Result.error(404, "管理员不存在");
+        }
+
+        String encodedPassword = passwordEncoder.encode(newPassword);
+        admin.setPassword(encodedPassword);
+
+        int result = userAdminMapper.updateById(admin);
+        return Result.success(result > 0);
+    }
+
+    /**
+     * 冻结管理员用户
+     */
+    @PutMapping("/admin/freeze")
+    public Result<Boolean> freezeAdminUser(@RequestParam Long adminId) {
+        UserAdmin user = new UserAdmin();
+        user.setId(adminId);
+        user.setStatus(0); // 0: 冻结
+        int result = userAdminMapper.updateById(user);
+        return Result.success(result > 0);
+    }
+
+    /**
+     * 解冻管理员用户
+     */
+    @PutMapping("/admin/unfreeze")
+    public Result<Boolean> unfreezeAdminUser(@RequestParam Long adminId) {
+        UserAdmin user = new UserAdmin();
+        user.setId(adminId);
+        user.setStatus(1); // 1: 正常
+        int result = userAdminMapper.updateById(user);
+        return Result.success(result > 0);
     }
 }

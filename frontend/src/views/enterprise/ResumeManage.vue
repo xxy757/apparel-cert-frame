@@ -193,8 +193,16 @@
 </template>
 
 <script>
-import { ref, reactive } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ref, reactive, onMounted } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import {
+  getJobApplications,
+  updateApplicationStatus,
+  getResumeDetail,
+  sendInterviewInvitation,
+  getCurrentUser,
+  getEnterpriseJobs
+} from '@/api/enterprise'
 
 export default {
   name: 'ResumeManage',
@@ -210,6 +218,9 @@ export default {
       status: '',
       certification: ''
     })
+
+    const loading = ref(false)
+    const enterpriseId = ref(null)
     
     const interviewForm = reactive({
       position: '',
@@ -236,96 +247,78 @@ export default {
       ]
     }
     
-    const jobs = ref([
-      { id: 1, title: '服装设计师' },
-      { id: 2, title: '服装打版师' }
-    ])
+    const jobs = ref([])
     
-    const resumes = ref([
-      {
-        id: 1,
-        userName: '张三',
-        positionName: '服装设计师',
-        careerDirection: '设计师',
-        education: '本科',
-        workExperience: '2年',
-        phone: '13800138000',
-        email: 'zhangsan@example.com',
-        careerObjective: '寻求服装设计师职位，展示创意设计能力',
-        educationList: [
-          {
-            school: '北京服装学院',
-            major: '服装设计',
-            degree: '本科',
-            startDate: '2018-09',
-            endDate: '2022-06',
-            description: '主修服装设计、服装史、色彩搭配等课程'
-          }
-        ],
-        workExperienceList: [
-          {
-            company: '某服装品牌',
-            position: '助理设计师',
-            startDate: '2022-07',
-            endDate: '2023-12',
-            responsibilities: [
-              '参与季节性服装设计',
-              '协助设计师绘制设计稿',
-              '跟进样衣制作过程'
-            ]
-          }
-        ],
-        certificates: [
-          { name: '服装设计师初级证书', date: '2022-06' }
-        ],
-        status: 0,
-        createTime: '2024-01-20 09:30:00'
-      },
-      {
-        id: 2,
-        userName: '李四',
-        positionName: '服装设计师',
-        careerDirection: '设计师',
-        education: '硕士',
-        workExperience: '3年',
-        phone: '13900139000',
-        email: 'lisi@example.com',
-        careerObjective: '寻求高级服装设计师职位，主导品牌设计方向',
-        educationList: [
-          {
-            school: '东华大学',
-            major: '服装设计',
-            degree: '硕士',
-            startDate: '2019-09',
-            endDate: '2022-06',
-            description: '主修服装创意设计、品牌策划等课程'
-          }
-        ],
-        workExperienceList: [
-          {
-            company: '知名服装品牌',
-            position: '设计师',
-            startDate: '2022-07',
-            endDate: '2024-01',
-            responsibilities: [
-              '独立完成季节性服装设计',
-              '参与品牌设计方向制定',
-              '指导助理设计师工作'
-            ]
-          }
-        ],
-        certificates: [
-          { name: '服装设计师中级证书', date: '2023-03' }
-        ],
-        status: 1,
-        createTime: '2024-01-18 14:20:00'
-      }
-    ])
+    const resumes = ref([])
     
     const currentPage = ref(1)
     const pageSize = ref(10)
-    const totalResumes = ref(resumes.value.length)
-    
+    const totalResumes = ref(0)
+
+    // 加载企业职位列表（用于筛选）
+    const loadJobs = async () => {
+      if (!enterpriseId.value) return
+
+      try {
+        const response = await getEnterpriseJobs(1, 100, enterpriseId.value)
+        if (response.data) {
+          jobs.value = response.data.records || response.data.list || []
+        }
+      } catch (error) {
+        console.error('加载职位列表失败:', error)
+      }
+    }
+
+    // 加载简历投递记录
+    const loadResumes = async () => {
+      if (!enterpriseId.value) {
+        return
+      }
+
+      loading.value = true
+      try {
+        const response = await getJobApplications(
+          currentPage.value,
+          pageSize.value,
+          searchForm.position || undefined,
+          searchForm.status || undefined
+        )
+
+        if (response.data) {
+          resumes.value = response.data.records || response.data.list || []
+          totalResumes.value = response.data.total || 0
+        }
+      } catch (error) {
+        console.error('加载简历失败:', error)
+        ElMessage.error('加载简历数据失败')
+      } finally {
+        loading.value = false
+      }
+    }
+
+    // 初始化企业ID
+    const initEnterpriseId = async () => {
+      try {
+        const response = await getCurrentUser()
+        if (response.data && response.data.enterpriseId) {
+          enterpriseId.value = response.data.enterpriseId
+          // 加载职位列表和简历数据
+          await loadJobs()
+          await loadResumes()
+        } else {
+          ElMessage.error('无法获取企业信息，请重新登录')
+        }
+      } catch (error) {
+        console.error('获取用户信息失败:', error)
+        ElMessage.error('获取用户信息失败')
+      }
+    }
+
+    // 组件挂载时初始化
+    onMounted(() => {
+      initEnterpriseId()
+    })
+
     const getStatusText = (status) => {
       const statusMap = {
         0: '已投递',
@@ -347,8 +340,8 @@ export default {
     }
     
     const searchResumes = () => {
-      // TODO: 调用简历搜索接口
-      console.log('搜索简历:', searchForm)
+      currentPage.value = 1
+      loadResumes()
     }
     
     const resetSearch = () => {
@@ -356,6 +349,8 @@ export default {
       searchForm.position = ''
       searchForm.status = ''
       searchForm.certification = ''
+      currentPage.value = 1
+      loadResumes()
     }
     
     const viewResume = (resume) => {
@@ -363,10 +358,15 @@ export default {
       resumeDetailDialogVisible.value = true
     }
     
-    const markAsViewed = (resume) => {
-      // TODO: 标记简历为已查看
-      resume.status = 1
-      ElMessage.success('已标记为已查看')
+    const markAsViewed = async (resume) => {
+      try {
+        await updateApplicationStatus(resume.id, 1)
+        ElMessage.success('已标记为已查看')
+        await loadResumes()
+      } catch (error) {
+        console.error('标记已查看失败:', error)
+        ElMessage.error('标记已查看失败')
+      }
     }
     
     const sendInterviewInvitation = (resume) => {
@@ -376,16 +376,43 @@ export default {
       interviewDialogVisible.value = true
     }
     
-    const sendInterview = () => {
-      // TODO: 发送面试邀请
-      interviewDialogVisible.value = false
-      ElMessage.success('面试邀请发送成功')
+    const sendInterview = async () => {
+      // 验证表单
+      const valid = await interviewFormRef.value?.validate()
+      if (!valid) return
+
+      try {
+        // 这里需要构建面试邀请数据
+        // 注意：需要根据实际数据结构调整
+        const interviewData = {
+          resumeId: selectedResume.value?.id,
+          jobId: selectedResume.value?.positionId, // 需要实际字段
+          interviewTime: interviewForm.interviewTime,
+          interviewLocation: interviewForm.interviewLocation,
+          interviewType: interviewForm.interviewType,
+          interviewer: interviewForm.interviewer,
+          remark: interviewForm.remark
+        }
+
+        await sendInterviewInvitation(interviewData)
+        interviewDialogVisible.value = false
+        ElMessage.success('面试邀请发送成功')
+        await loadResumes()
+      } catch (error) {
+        console.error('发送面试邀请失败:', error)
+        ElMessage.error('发送面试邀请失败')
+      }
     }
     
-    const rejectResume = (resume) => {
-      // TODO: 拒绝简历
-      resume.status = 3
-      ElMessage.success('已拒绝该简历')
+    const rejectResume = async (resume) => {
+      try {
+        await updateApplicationStatus(resume.id, 3)
+        ElMessage.success('已拒绝该简历')
+        await loadResumes()
+      } catch (error) {
+        console.error('拒绝简历失败:', error)
+        ElMessage.error('拒绝简历失败')
+      }
     }
     
     const viewInterview = (resume) => {
@@ -396,10 +423,12 @@ export default {
     const handleSizeChange = (size) => {
       pageSize.value = size
       currentPage.value = 1
+      loadResumes()
     }
-    
+
     const handleCurrentChange = (current) => {
       currentPage.value = current
+      loadResumes()
     }
     
     return {

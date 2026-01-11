@@ -18,6 +18,11 @@
         text-color="#bfcbd9"
         active-text-color="#409EFF"
       >
+        <el-menu-item index="/admin/dashboard">
+          <template #title>
+            <span>仪表盘</span>
+          </template>
+        </el-menu-item>
         <el-menu-item index="/admin/user">
           <template #title>
             <span>用户管理</span>

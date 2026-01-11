@@ -6,6 +6,7 @@ import com.apparelcert.entity.UserPersonal;
 import com.apparelcert.service.AuthService;
 import com.apparelcert.service.EmailService;
 import com.apparelcert.service.LoginAttemptService;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -15,6 +16,7 @@ import java.util.Map;
 /**
  * 认证控制器
  */
+@Slf4j
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {
@@ -136,7 +138,7 @@ public class AuthController {
     public Result<Map<String, Object>> loginEnterprise(@RequestBody Map<String, String> loginInfo) {
         String username = loginInfo.get("username");
         String password = loginInfo.get("password");
-        
+
         // 参数验证
         if (username == null || username.trim().isEmpty()) {
             return Result.error(400, "用户名不能为空");
@@ -144,17 +146,17 @@ public class AuthController {
         if (password == null || password.trim().isEmpty()) {
             return Result.error(400, "密码不能为空");
         }
-        
+
         // 检查账号是否被锁定
         Map<String, Object> lockInfo = loginAttemptService.checkLocked(username, 2);
         if ((Boolean) lockInfo.get("isLocked")) {
             long remainingSeconds = (Long) lockInfo.get("remainingSeconds");
             return Result.error(423, "账号已被锁定，请" + remainingSeconds + "秒后重试");
         }
-        
+
         Map<String, Object> result = authService.loginEnterprise(username, password);
         Boolean success = (Boolean) result.get("success");
-        
+
         if (success) {
             // 登录成功，重置失败次数
             loginAttemptService.resetAttempts(username, 2);
@@ -162,6 +164,52 @@ public class AuthController {
         } else {
             // 登录失败，记录失败次数
             int remainingAttempts = loginAttemptService.recordFailedAttempt(username, 2);
+            String message = (String) result.get("message");
+            if (remainingAttempts > 0) {
+                message += "，剩余尝试次数：" + remainingAttempts;
+            } else {
+                message = "登录失败次数过多，账号已被锁定5分钟";
+            }
+            result.put("remainingAttempts", remainingAttempts);
+            return Result.error(401, message);
+        }
+    }
+
+    /**
+     * 管理员用户登录
+     */
+    @PostMapping("/login/admin")
+    public Result<Map<String, Object>> loginAdmin(@RequestBody Map<String, String> loginInfo) {
+        log.info("=======管理员用户登录 /login/admin=========");
+        String username = loginInfo.get("username");
+        String password = loginInfo.get("password");
+        log.info("=======>username: " + username);
+        log.info("=======>password: " + password);
+        // 参数验证
+        if (username == null || username.trim().isEmpty()) {
+            return Result.error(400, "用户名不能为空");
+        }
+        if (password == null || password.trim().isEmpty()) {
+            return Result.error(400, "密码不能为空");
+        }
+
+        // 检查账号是否被锁定
+        Map<String, Object> lockInfo = loginAttemptService.checkLocked(username, 3);
+        if ((Boolean) lockInfo.get("isLocked")) {
+            long remainingSeconds = (Long) lockInfo.get("remainingSeconds");
+            return Result.error(423, "账号已被锁定，请" + remainingSeconds + "秒后重试");
+        }
+
+        Map<String, Object> result = authService.loginAdmin(username, password);
+        Boolean success = (Boolean) result.get("success");
+
+        if (success) {
+            // 登录成功，重置失败次数
+            loginAttemptService.resetAttempts(username, 3);
+            return Result.success(result);
+        } else {
+            // 登录失败，记录失败次数
+            int remainingAttempts = loginAttemptService.recordFailedAttempt(username, 3);
             String message = (String) result.get("message");
             if (remainingAttempts > 0) {
                 message += "，剩余尝试次数：" + remainingAttempts;
