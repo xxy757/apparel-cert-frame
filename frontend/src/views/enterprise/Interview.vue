@@ -398,34 +398,21 @@ const batchExportResumes = async (format = 'excel') => {
   
   exportLoading.value = true
   try {
-    const candidateIds = selectedInterviews.value.map(i => i.candidateId || i.id)
-    const response = await request.post('/api/enterprise/resume/batch-export', {
-      candidateIds: candidateIds,
-      format: format
-    }, {
-      responseType: 'blob'
-    })
-    
-    // 创建下载链接
-    const blob = new Blob([response.data], { 
-      type: format === 'excel' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/pdf'
-    })
-    const url = window.URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `简历导出_${new Date().toLocaleDateString()}.${format === 'excel' ? 'xlsx' : 'pdf'}`
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    window.URL.revokeObjectURL(url)
-    
-    ElMessage.success(`成功导出 ${selectedInterviews.value.length} 份简历`)
-    clearInterviewSelection()
+    const resumeIds = selectedInterviews.value.map(i => i.resumeId || i.candidateId || i.id)
+    const exportUrl = format === 'excel' ? '/resume/batch-export/excel' : '/resume/batch-export/pdf'
+    const response = await request.post(exportUrl, { resumeIds })
+
+    if (response.data) {
+      window.open(response.data, '_blank')
+      ElMessage.success(`成功导出 ${selectedInterviews.value.length} 份简历`)
+      clearInterviewSelection()
+      return
+    }
+
+    ElMessage.error('导出失败，请稍后重试')
   } catch (error) {
     console.error('导出简历失败:', error)
-    // 模拟成功
-    ElMessage.success(`成功导出 ${selectedInterviews.value.length} 份简历（演示模式）`)
-    clearInterviewSelection()
+    ElMessage.error('导出失败，请稍后重试')
   } finally {
     exportLoading.value = false
   }

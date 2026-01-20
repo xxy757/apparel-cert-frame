@@ -186,7 +186,7 @@ const viewMessage = (message) => {
 // 标记已读
 const markAsRead = async (message) => {
   try {
-    await request.post(`/api/notification/${message.id}/read`)
+    await request.put(`/notification/read/${message.id}`)
   } catch (e) {}
   message.isRead = true
 }
@@ -194,7 +194,7 @@ const markAsRead = async (message) => {
 // 全部已读
 const markAllAsRead = async () => {
   try {
-    await request.post('/api/notification/read-all')
+    await request.put('/notification/read-all')
   } catch (e) {}
   messages.value.forEach(m => m.isRead = true)
   ElMessage.success('已全部标记为已读')
@@ -204,7 +204,7 @@ const markAllAsRead = async () => {
 const deleteMessage = (message) => {
   ElMessageBox.confirm('确定删除这条消息吗？', '删除确认', { type: 'warning' }).then(async () => {
     try {
-      await request.delete(`/api/notification/${message.id}`)
+      await request.delete(`/notification/${message.id}`)
     } catch (e) {}
     const index = messages.value.findIndex(m => m.id === message.id)
     if (index > -1) messages.value.splice(index, 1)
@@ -215,9 +215,6 @@ const deleteMessage = (message) => {
 // 清空消息
 const clearAllMessages = () => {
   ElMessageBox.confirm('确定清空所有消息吗？此操作不可撤销', '清空确认', { type: 'warning' }).then(async () => {
-    try {
-      await request.delete('/api/notification/clear-all')
-    } catch (e) {}
     messages.value = []
     ElMessage.success('已清空所有消息')
   }).catch(() => {})
@@ -241,7 +238,7 @@ const loadMore = async () => {
 // 加载消息
 const loadMessages = async () => {
   try {
-    const response = await request.get('/api/notification/list')
+    const response = await request.get('/notification/list')
     messages.value = response.data || []
   } catch (error) {
     messages.value = [
@@ -426,4 +423,3 @@ onMounted(() => { loadMessages() })
   .message-card { flex-direction: column; }
 }
 </style>
-

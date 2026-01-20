@@ -395,7 +395,7 @@ export default {
     
     const loadContents = async () => {
       try {
-        const response = await request.get('/api/announcement/list', {
+        const response = await request.get('/announcement/admin/list', {
           params: {
             page: currentPage.value,
             size: pageSize.value,
@@ -487,7 +487,7 @@ export default {
           try {
             // 如果是行业动态，调用专门的API
             if (contentForm.contentType === 'news') {
-              await request.post('/api/announcement/industry-news', {
+              await request.post('/announcement/industry-news', {
                 title: contentForm.title,
                 content: contentForm.content,
                 summary: contentForm.summary,

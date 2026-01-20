@@ -450,15 +450,17 @@ onMounted(() => {
 
 const loadUsers = async () => {
   try {
-    const response = await request.get('/api/admin/user/list', {
+    const endpointMap = {
+      personal: '/admin/user/personal',
+      enterprise: '/admin/user/enterprise',
+      admin: '/admin/user/admin'
+    }
+    const endpoint = endpointMap[searchForm.userType] || '/admin/user/personal'
+    const response = await request.get(endpoint, {
       params: {
         page: currentPage.value,
         size: pageSize.value,
-        keyword: searchForm.keyword,
-        userType: searchForm.userType,
-        status: searchForm.status,
-        startDate: searchForm.dateRange ? searchForm.dateRange[0] : '',
-        endDate: searchForm.dateRange ? searchForm.dateRange[1] : ''
+        keyword: searchForm.keyword
       }
     })
         
@@ -557,9 +559,9 @@ const resetPassword = (user) => {
 
 const viewLoginHistory = async (user) => {
   try {
-    const response = await request.get(`/api/admin/user/${user.id}/login-history`)
-    loginHistory.value = response.data || []
+    loginHistory.value = []
     loginHistoryVisible.value = true
+    ElMessage.info('当前暂未提供登录记录接口')
   } catch (error) {
     console.error('加载登录记录失败:', error)
     ElMessage.error('加载登录记录失败')
@@ -630,9 +632,9 @@ const renderCharts = () => {
 const loadStatisticsData = async () => {
   try {
     // 获取用户增长趋势
-    const trendResponse = await request.get('/api/admin/user/statistics/trend')
+    const trendResponse = await request.get('/admin/user/statistics/trend')
     // 获取用户活跃度
-    const activityResponse = await request.get('/api/admin/user/statistics/activity')
+    const activityResponse = await request.get('/admin/user/statistics/activity')
     
     // 更新统计数据
     if (trendResponse.data) {

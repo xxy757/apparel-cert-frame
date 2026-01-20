@@ -4,11 +4,11 @@ import request from '@/utils/request'
  * 获取当前用户的认证申请列表
  * @returns {Promise}
  */
-export function getMyApplications() {
-  // 假设后端提供了 /api/application/my 接口获取当前用户的申请列表
+export function getMyApplications(params) {
   return request({
-    url: '/api/application/my',
-    method: 'get'
+    url: '/personal/certification/list',
+    method: 'get',
+    params
   })
 }
 
@@ -16,11 +16,11 @@ export function getMyApplications() {
  * 获取当前用户的证书列表
  * @returns {Promise}
  */
-export function getMyCertificates() {
-  // 假设后端提供了 /api/certificate/my 接口获取当前用户的证书
+export function getMyCertificates(params) {
   return request({
-    url: '/api/certificate/my',
-    method: 'get'
+    url: '/admin/certification/certificate/by-user',
+    method: 'get',
+    params
   })
 }
 
@@ -28,10 +28,11 @@ export function getMyCertificates() {
  * 获取所有认证标准
  * @returns {Promise}
  */
-export function getCertificationStandards() {
+export function getCertificationStandards(params) {
   return request({
-    url: '/api/certification-standard',
-    method: 'get'
+    url: '/admin/certification/standard',
+    method: 'get',
+    params
   })
 }
 
@@ -42,7 +43,7 @@ export function getCertificationStandards() {
  */
 export function submitNewApplication(data) {
   return request({
-    url: '/api/application',
+    url: '/personal/certification',
     method: 'post',
     data
   })
@@ -53,11 +54,11 @@ export function submitNewApplication(data) {
  * @param {number} daysBeforeExpire - 过期前天数
  * @returns {Promise}
  */
-export function getExpiringCertificates(daysBeforeExpire) {
+export function getExpiringCertificates(params) {
   return request({
-    url: '/api/certificate/expiring',
+    url: '/admin/certification/certificate/expiring',
     method: 'get',
-    params: { daysBeforeExpire }
+    params
   })
 }
 
@@ -68,7 +69,7 @@ export function getExpiringCertificates(daysBeforeExpire) {
  */
 export function renewCertificateRequest(data) {
   return request({
-    url: '/api/certificate/renew',
+    url: '/admin/certification/certificate/renew',
     method: 'post',
     params: data
   })
@@ -81,7 +82,7 @@ export function renewCertificateRequest(data) {
  */
 export function getCertificateShareLink(certificateId) {
     return request({
-        url: '/api/certificate/share-link',
+        url: '/admin/certification/certificate/share-link',
         method: 'get',
         params: { certificateId }
     })

@@ -237,23 +237,53 @@ const withdrawApplication = (app) => {
     cancelButtonText: '取消',
     type: 'warning'
   }).then(async () => {
-    try {
-      await request.post(`/api/application/${app.id}/withdraw`)
-      ElMessage.success('申请已撤回')
-      loadApplications()
-    } catch (error) {
-      const index = applications.value.findIndex(a => a.id === app.id)
-      if (index > -1) applications.value.splice(index, 1)
-      ElMessage.success('申请已撤回')
-    }
+    ElMessage.info('当前系统暂不支持撤回申请')
   }).catch(() => {})
 }
 
 const loadApplications = async () => {
   try {
-    const response = await request.get('/api/application/my-list', { params: { page: currentPage.value, size: pageSize.value } })
-    applications.value = response.data?.list || []
-    total.value = response.data?.total || 0
+    const response = await request.get('/personal/job/applications', {
+      params: { userId: Number(localStorage.getItem('userId') || 0) }
+    })
+    const statusMap = {
+      0: 'PENDING',
+      1: 'VIEWED',
+      2: 'INTERVIEW',
+      3: 'ACCEPTED',
+      4: 'REJECTED'
+    }
+    const rawApplications = response.data || []
+    const jobDetailList = await Promise.all(
+      rawApplications.map(app =>
+        request
+          .get('/personal/job/detail', { params: { jobId: app.jobId } })
+          .then(res => res.data)
+          .catch(() => null)
+      )
+    )
+
+    applications.value = rawApplications.map((app, index) => {
+      const jobDetail = jobDetailList[index]
+      return {
+        id: app.id,
+        jobId: app.jobId,
+        jobTitle: jobDetail?.title || `岗位 ${app.jobId}`,
+        companyName: app.enterpriseId ? `企业ID ${app.enterpriseId}` : '-',
+        companyLogo: null,
+        salary: jobDetail?.salary || '-',
+        location: jobDetail?.location || '-',
+        applyTime: app.applyTime,
+        status: statusMap[app.status] || 'PENDING',
+        statusTime: app.feedbackTime,
+        timeline: []
+      }
+    })
+    total.value = applications.value.length
+    stats[0].value = applications.value.length
+    stats[1].value = applications.value.filter(app => app.status === 'VIEWED').length
+    stats[2].value = applications.value.filter(app => app.status === 'INTERVIEW').length
+    stats[3].value = applications.value.filter(app => app.status === 'ACCEPTED').length
   } catch (error) {
     applications.value = [
       { id: 1, jobTitle: '高级服装设计师', companyName: '上海时尚服饰有限公司', companyLogo: null, salary: '15K-25K', location: '上海市', applyTime: '2024-01-15T10:30:00', status: 'INTERVIEW', statusTime: '2024-01-18', timeline: [{ time: '2024-01-15 10:30', content: '成功投递简历', type: 'primary' }, { time: '2024-01-16 14:20', content: 'HR已查看您的简历', type: 'success' }, { time: '2024-01-18 09:00', content: '收到面试邀请', type: 'warning' }] },

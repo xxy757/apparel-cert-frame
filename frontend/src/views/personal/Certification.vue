@@ -60,8 +60,8 @@
             <el-table :data="applications" style="width: 100%">
               <el-table-column prop="id" label="申请ID" width="100"></el-table-column>
               <el-table-column prop="standardName" label="认证项目" width="200"></el-table-column>
-              <el-table-column prop="jobType" label="岗位类型" width="120"></el-table-column>
-              <el-table-column prop="level" label="等级" width="100"></el-table-column>
+              <el-table-column prop="jobTypeLabel" label="岗位类型" width="120"></el-table-column>
+              <el-table-column prop="levelLabel" label="等级" width="100"></el-table-column>
               <el-table-column prop="status" label="状态" width="120">
                 <template #default="scope">
                   <el-tag :type="getStatusTagType(scope.row.status)">
@@ -127,8 +127,8 @@
             <el-table :data="standards" style="width: 100%">
               <el-table-column prop="id" label="标准ID" width="100"></el-table-column>
               <el-table-column prop="name" label="认证项目" width="200"></el-table-column>
-              <el-table-column prop="jobType" label="岗位类型" width="120"></el-table-column>
-              <el-table-column prop="level" label="等级" width="100"></el-table-column>
+              <el-table-column prop="jobTypeLabel" label="岗位类型" width="120"></el-table-column>
+              <el-table-column prop="levelLabel" label="等级" width="100"></el-table-column>
               <el-table-column prop="description" label="描述"></el-table-column>
               <el-table-column label="操作" width="150" fixed="right">
                 <template #default="scope">
@@ -146,17 +146,17 @@
       <el-form ref="applyFormRef" :model="applyForm" :rules="applyRules" label-width="120px">
         <el-form-item label="岗位类型" prop="jobType">
           <el-select v-model="applyForm.jobType" placeholder="请选择岗位类型">
-            <el-option label="设计师" value="设计师"></el-option>
-            <el-option label="打版师" value="打版师"></el-option>
-            <el-option label="质检员" value="质检员"></el-option>
-            <el-option label="导购" value="导购"></el-option>
+            <el-option label="设计师" value="designer"></el-option>
+            <el-option label="打版师" value="patternmaker"></el-option>
+            <el-option label="质检员" value="inspector"></el-option>
+            <el-option label="导购" value="sales"></el-option>
           </el-select>
         </el-form-item>
         <el-form-item label="认证等级" prop="level">
           <el-select v-model="applyForm.level" placeholder="请选择认证等级">
-            <el-option label="初级" value="初级"></el-option>
-            <el-option label="中级" value="中级"></el-option>
-            <el-option label="高级" value="高级"></el-option>
+            <el-option label="初级" :value="1"></el-option>
+            <el-option label="中级" :value="2"></el-option>
+            <el-option label="高级" :value="3"></el-option>
           </el-select>
         </el-form-item>
         <el-form-item label="认证项目" prop="standardId">
@@ -300,6 +300,19 @@ export default {
         { required: true, message: '请选择认证项目', trigger: 'change' }
       ]
     }
+
+    const jobTypeLabelMap = {
+      designer: '设计师',
+      patternmaker: '打版师',
+      inspector: '质检员',
+      sales: '导购'
+    }
+
+    const levelLabelMap = {
+      1: '初级',
+      2: '中级',
+      3: '高级'
+    }
     
     const getStatusText = (status) => {
       const statusMap = {
@@ -326,14 +339,51 @@ export default {
     // --- API 调用 ---
     const fetchAllData = async () => {
       try {
+        const userId = Number(localStorage.getItem('userId') || 0)
         const [applicationsRes, certificatesRes, standardsRes] = await Promise.all([
-          getMyApplications(),
-          getMyCertificates(),
-          getCertificationStandards()
-        ]);
-        applications.value = applicationsRes.data || [];
-        certificates.value = certificatesRes.data || [];
-        standards.value = standardsRes.data || [];
+          getMyApplications({ userId }),
+          getMyCertificates({ userId }),
+          getCertificationStandards({ page: 1, size: 100 })
+        ])
+        const standardRecords = standardsRes.data?.records || standardsRes.data || []
+        standards.value = standardRecords.map((standard) => ({
+          ...standard,
+          jobType: standard.type,
+          jobTypeLabel: jobTypeLabelMap[standard.type] || standard.type,
+          levelLabel: levelLabelMap[standard.level] || standard.level
+        }))
+
+        const findStandardId = (certificationType, level) => {
+          const matched = standards.value.find(
+            standard => standard.type === certificationType && standard.level === level
+          )
+          return matched?.id || null
+        }
+
+        applications.value = (applicationsRes.data || []).map((application) => ({
+          id: application.id,
+          standardId: findStandardId(application.certificationType, application.level),
+          standardName: application.projectName || '-',
+          jobTypeLabel: jobTypeLabelMap[application.certificationType] || application.certificationType,
+          levelLabel: levelLabelMap[application.level] || application.level,
+          status: application.status,
+          createTime: application.applyTime,
+          updateTime: application.reviewTime
+        }))
+
+        certificates.value = (certificatesRes.data || []).map((cert) => {
+          const jobTypeLabel = jobTypeLabelMap[cert.certificationType] || cert.certificationType
+          const levelLabel = levelLabelMap[cert.level] || cert.level
+          return {
+            ...cert,
+            name: `${jobTypeLabel}${levelLabel ? `（${levelLabel}）` : ''}`,
+            jobTypeLabel,
+            levelLabel,
+            certificateNo: cert.certificateNumber,
+            standardName: cert.certificationType,
+            status: cert.certificateStatus === '有效' ? 1 : 0
+          }
+        })
       } catch (error) {
         ElMessage.error('数据加载失败，请稍后重试。')
         console.error("Failed to fetch data:", error);
@@ -349,7 +399,16 @@ export default {
       await applyFormRef.value.validate(async (valid) => {
         if (valid) {
           try {
-            await submitNewApplication(applyForm);
+            const userId = Number(localStorage.getItem('userId') || 0)
+            const selectedStandard = standards.value.find(
+              (standard) => standard.id === applyForm.standardId
+            )
+            await submitNewApplication({
+              userId,
+              certificationType: applyForm.jobType,
+              level: applyForm.level,
+              projectName: selectedStandard?.name || ''
+            })
             ElMessage.success('认证申请提交成功，待审核');
             applyDialogVisible.value = false;
             await fetchAllData(); // 重新加载数据
@@ -393,7 +452,7 @@ export default {
     const shareCertificate = async (cert) => {
       try {
         const response = await getCertificateShareLink(cert.id)
-        const shareLink = response.data?.shareLink || `https://apparelcert.com/verify/${cert.certificateNo}`
+        const shareLink = response.data || `https://apparelcert.com/verify/${cert.certificateNo}`
         showShareDialog(cert, shareLink)
       } catch (error) {
         ElMessage.error('获取分享链接失败')
@@ -452,12 +511,23 @@ export default {
     const checkExpiringCertificates = async () => {
       checkingExpiry.value = true
       try {
-        const response = await getExpiringCertificates(30)
+        const response = await getExpiringCertificates({
+          userId: Number(localStorage.getItem('userId') || 0),
+          daysBeforeExpire: 30
+        })
         if (response.data && response.data.length > 0) {
-          expiringCertificates.value = response.data.map(cert => ({
-            ...cert,
-            remainingDays: Math.ceil((new Date(cert.expireDate) - new Date()) / (1000 * 60 * 60 * 24))
-          }))
+          expiringCertificates.value = response.data.map(cert => {
+            const jobTypeLabel = jobTypeLabelMap[cert.certificationType] || cert.certificationType
+            const levelLabel = levelLabelMap[cert.level] || cert.level
+            return {
+              ...cert,
+              name: cert.name || `${jobTypeLabel}${levelLabel ? `（${levelLabel}）` : ''}`,
+              certificateNo: cert.certificateNumber,
+              jobTypeLabel,
+              levelLabel,
+              remainingDays: Math.ceil((new Date(cert.expireDate) - new Date()) / (1000 * 60 * 60 * 24))
+            }
+          })
           expiryReminderVisible.value = true
         } else {
           ElMessage.success('所有证书状态正常')

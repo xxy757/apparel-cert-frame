@@ -231,6 +231,7 @@ const examInfo = reactive({
 const questions = ref([])
 const currentQuestionIndex = ref(0)
 const userAnswers = reactive({})
+const examRecordId = ref(null)
 
 // 计时器
 const timeRemaining = ref(7200)
@@ -329,10 +330,11 @@ const confirmSubmit = async () => {
   submitting.value = true
   try {
     // 模拟提交考试答案
-    const response = await request.post('/api/exam/submit', {
-      examId: route.query.examId,
-      applicationId: route.query.applicationId,
-      answers: userAnswers
+    const userId = Number(localStorage.getItem('userId') || 0)
+    const response = await request.post('/exam/submit', {
+      examRecordId: examRecordId.value,
+      userId,
+      answers: JSON.stringify(userAnswers)
     })
 
     // 设置考试结果
@@ -372,13 +374,19 @@ const backToCertification = () => {
 
 const loadExamQuestions = async () => {
   try {
-    const response = await request.get('/api/exam/questions', {
-      params: {
-        examId: route.query.examId,
-        applicationId: route.query.applicationId
-      }
+    const userId = Number(localStorage.getItem('userId') || 0)
+    const response = await request.post('/exam/generate', {
+      userId,
+      applicationId: Number(route.query.applicationId),
+      standardId: Number(route.query.examId),
+      questionCount: 20
     })
-    questions.value = response.data || []
+    examRecordId.value = response.data?.examRecordId || null
+    questions.value = response.data?.questions || []
+    examInfo.totalScore = response.data?.totalScore || examInfo.totalScore
+    examInfo.passScore = response.data?.passScore || Math.round(examInfo.totalScore * 0.6)
+    examInfo.duration = (response.data?.duration || 60) * 60
+    timeRemaining.value = examInfo.duration
   } catch (error) {
     // 使用模拟数据
     questions.value = [

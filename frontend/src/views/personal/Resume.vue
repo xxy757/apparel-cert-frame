@@ -268,19 +268,21 @@ export default {
       checkingCerts.value = true
       try {
         // 获取用户已通过的认证列表
-        const response = await request.get('/certification/passed')
+        const response = await request.get('/admin/certification/certificate/by-user', {
+          params: { userId: Number(localStorage.getItem('userId') || 0) }
+        })
         
         if (response.data && response.data.length > 0) {
           // 过滤出简历中没有的认证
           const existingCertNames = resume.certificates.map(c => c.name)
-          const newCerts = response.data.filter(cert => !existingCertNames.includes(cert.certificationName))
+          const newCerts = response.data.filter(cert => !existingCertNames.includes(cert.name))
           
           if (newCerts.length > 0) {
             newCertifications.value = newCerts.map(cert => ({
               id: cert.id,
-              name: cert.certificationName,
+              name: cert.name,
               level: cert.level,
-              date: cert.passDate || new Date().toISOString().split('T')[0]
+              date: cert.issueDate || new Date().toISOString().split('T')[0]
             }))
             showCertSyncTip.value = true
             ElMessage.success(`发现 ${newCerts.length} 项新认证可以同步`)
