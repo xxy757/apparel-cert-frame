@@ -205,7 +205,7 @@ export default {
     }
 
     // 上传头像相关
-    const uploadUrl = `${import.meta.env.VITE_APP_API_BASE_URL || '/api'}/file/avatar`
+    const uploadUrl = `${import.meta.env.VITE_APP_API_BASE_URL || '/api'}/upload/avatar`
     const uploadHeaders = {
       'Authorization': `Bearer ${localStorage.getItem('token')}`
     }

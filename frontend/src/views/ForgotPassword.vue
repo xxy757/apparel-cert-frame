@@ -243,7 +243,7 @@ const sendVerifyCode = async () => {
     sending.value = true
     
     // 调用发送验证码接口
-    await request.post('/auth/forgot-password', { email: emailForm.email })
+    await request.post('/auth/forget-password', { email: emailForm.email })
     
     ElMessage.success('验证码已发送，请查收邮件')
     currentStep.value = 1
@@ -267,8 +267,10 @@ const verifyCode = async () => {
     await codeFormRef.value.validate()
     verifying.value = true
     
-    // 模拟验证码验证
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    await request.post('/auth/verify-reset-code', {
+      email: emailForm.email,
+      code: codeForm.code
+    })
     
     // 验证成功
     ElMessage.success('验证成功')

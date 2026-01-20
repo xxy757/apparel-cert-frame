@@ -7,7 +7,7 @@ import request from '@/utils/request'
  */
 export function searchJobs(params) {
   return request({
-    url: '/api/job/search',
+    url: '/personal/job',
     method: 'get',
     params
   })
@@ -17,10 +17,11 @@ export function searchJobs(params) {
  * 获取智能推荐职位
  * @returns {Promise}
  */
-export function getRecommendedJobs() {
+export function getRecommendedJobs(userId) {
   return request({
-    url: '/api/job/recommend',
-    method: 'get'
+    url: '/personal/job/recommended',
+    method: 'get',
+    params: { userId }
   })
 }
 
@@ -29,11 +30,12 @@ export function getRecommendedJobs() {
  * @param {string} id - 职位ID
  * @returns {Promise}
  */
-export function getJobDetail(id) {
-    return request({
-        url: `/api/job/${id}`,
-        method: 'get'
-    })
+export function getJobDetail(jobId) {
+  return request({
+    url: '/personal/job/detail',
+    method: 'get',
+    params: { jobId }
+  })
 }
 
 /**
@@ -41,11 +43,11 @@ export function getJobDetail(id) {
  * @param {object} data - { jobId, resumeId }
  * @returns {Promise}
  */
-export function applyToJob(data) {
+export function applyToJob(params) {
   return request({
-    url: '/api/resume-delivery/apply',
+    url: '/personal/job/apply',
     method: 'post',
-    data
+    params
   })
 }
 
@@ -56,21 +58,9 @@ export function applyToJob(data) {
  */
 export function batchApplyToJobs(data) {
   return request({
-    url: '/api/resume-delivery/batch-apply',
+    url: '/personal/job/batch-apply',
     method: 'post',
     data
-  })
-}
-
-/**
- * 收藏或取消收藏职位
- * @param {string} jobId - 职位ID
- * @returns {Promise}
- */
-export function toggleSaveJob(jobId) {
-  return request({
-    url: `/api/job/save/${jobId}`,
-    method: 'post'
   })
 }
 
@@ -81,7 +71,7 @@ export function toggleSaveJob(jobId) {
  */
 export function createScheduledDelivery(data) {
   return request({
-    url: '/api/scheduled-delivery/batch-create',
+    url: '/scheduled-delivery/batch-create',
     method: 'post',
     data
   })

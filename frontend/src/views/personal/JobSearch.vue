@@ -219,9 +219,6 @@
               <el-button type="primary" @click.stop="applyForJob(job)">
                 <i class="el-icon-check"></i> 申请职位
               </el-button>
-              <el-button type="success" @click.stop="saveJob(job)" :disabled="job.saved">
-                <i class="el-icon-star-on"></i> {{ job.saved ? '已收藏' : '收藏' }}
-              </el-button>
             </div>
           </div>
         </el-card>
@@ -415,7 +412,6 @@ import {
   getJobDetail,
   applyToJob,
   batchApplyToJobs,
-  toggleSaveJob,
   createScheduledDelivery
 } from '../../api/job'
 
@@ -470,6 +466,8 @@ export default {
     const scheduledRules = {
       scheduledTime: [{ required: true, message: '请选择投递时间', trigger: 'change' }]
     }
+
+    const resumeUrl = ''
     
     // --- API 调用 ---
 
@@ -478,14 +476,16 @@ export default {
       loading.value = true
       try {
         const params = {
-          query: searchQuery.value,
-          ...filters,
           page: pagination.currentPage,
-          size: pagination.pageSize
+          size: pagination.pageSize,
+          keyword: searchQuery.value,
+          type: filters.jobType,
+          location: filters.location,
+          salary: filters.salary
         }
         const res = await searchJobs(params)
-        jobs.value = res.data.records || []
-        totalJobs.value = res.data.total || 0
+        jobs.value = res.data.records || res.data || []
+        totalJobs.value = res.data.total || jobs.value.length || 0
       } catch (error) {
         ElMessage.error('职位加载失败')
         console.error("Failed to search jobs:", error)
@@ -498,7 +498,8 @@ export default {
     const loadRecommendations = async () => {
       recommendationLoading.value = true
       try {
-        const res = await getRecommendedJobs()
+        const userId = Number(localStorage.getItem('userId') || 0)
+        const res = await getRecommendedJobs(userId)
         recommendedJobs.value = res.data || []
       } catch (error) {
         // 推荐加载失败不是关键性错误，可以静默处理或轻提示
@@ -537,23 +538,12 @@ export default {
     // 申请职位
     const applyForJob = async (job) => {
       try {
-        // 假设使用默认简历ID 1
-        await applyToJob({ jobId: job.id, resumeId: 1 })
+        const userId = Number(localStorage.getItem('userId') || 0)
+        await applyToJob({ jobId: job.id, userId, resumeUrl })
         ElMessage.success(`已成功申请职位：${job.title}`)
         dialogVisible.value = false
       } catch (error) {
         ElMessage.error('申请失败，请稍后重试')
-      }
-    }
-
-    // 收藏职位
-    const saveJob = async (job) => {
-      try {
-        await toggleSaveJob(job.id)
-        job.saved = !job.saved
-        ElMessage.success(job.saved ? '职位已收藏' : '收藏已取消')
-      } catch (error) {
-        ElMessage.error('操作失败')
       }
     }
 
@@ -567,7 +557,8 @@ export default {
       batchApplying.value = true
       try {
         const jobIds = selectedJobs.value.map(j => j.id)
-        await batchApplyToJobs({ jobIds, resumeId: 1 }) // 假设使用默认简历
+        const userId = Number(localStorage.getItem('userId') || 0)
+        await batchApplyToJobs({ jobIds, userId, resumeUrl })
         ElMessage.success(`成功投递 ${selectedJobs.value.length} 个职位`)
         batchApplyDialogVisible.value = false
         clearSelection()
@@ -591,8 +582,10 @@ export default {
         schedulingDelivery.value = true
         try {
           const jobIds = selectedJobs.value.map(j => j.id)
+          const userId = Number(localStorage.getItem('userId') || 0)
           await createScheduledDelivery({
             jobIds,
+            userId,
             resumeId: scheduledForm.resumeId,
             scheduledTime: scheduledForm.scheduledTime
           })
@@ -669,10 +662,10 @@ export default {
       scheduledRules,
       isIndeterminate,
       handleSearch,
+      searchJobs: handleSearch,
       resetFilters,
       viewJobDetail,
       applyForJob,
-      saveJob,
       getJobTypeColor,
       handleSizeChange,
       handleCurrentChange,

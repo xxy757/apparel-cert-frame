@@ -11,7 +11,7 @@ import request from '@/utils/request'
  */
 export function getEnterpriseInfo(enterpriseId) {
   return request({
-    url: '/api/enterprise',
+    url: '/enterprise',
     method: 'get',
     params: { enterpriseId }
   })
@@ -24,7 +24,7 @@ export function getEnterpriseInfo(enterpriseId) {
  */
 export function updateEnterpriseInfo(enterprise) {
   return request({
-    url: '/api/enterprise',
+    url: '/enterprise',
     method: 'post',
     data: enterprise
   })
@@ -39,7 +39,7 @@ export function updateEnterpriseInfo(enterprise) {
  */
 export function submitEnterpriseAuth(enterpriseId, businessLicense, otherCertificates) {
   return request({
-    url: '/api/enterprise/auth',
+    url: '/enterprise/auth',
     method: 'post',
     params: { enterpriseId, businessLicense, otherCertificates }
   })
@@ -52,7 +52,7 @@ export function submitEnterpriseAuth(enterpriseId, businessLicense, otherCertifi
  */
 export function getEnterpriseAuthStatus(enterpriseId) {
   return request({
-    url: '/api/enterprise/auth/status',
+    url: '/enterprise/auth/status',
     method: 'get',
     params: { enterpriseId }
   })
@@ -69,7 +69,7 @@ export function getEnterpriseAuthStatus(enterpriseId) {
  */
 export function publishJob(job) {
   return request({
-    url: '/api/enterprise/job',
+    url: '/enterprise/job',
     method: 'post',
     data: job
   })
@@ -85,7 +85,7 @@ export function publishJob(job) {
  */
 export function getEnterpriseJobs(page, size, enterpriseId, status) {
   return request({
-    url: '/api/enterprise/job',
+    url: '/enterprise/job',
     method: 'get',
     params: { page, size, enterpriseId, status }
   })
@@ -98,7 +98,7 @@ export function getEnterpriseJobs(page, size, enterpriseId, status) {
  */
 export function getJobDetail(jobId) {
   return request({
-    url: '/api/enterprise/job/detail',
+    url: '/enterprise/job/detail',
     method: 'get',
     params: { jobId }
   })
@@ -111,7 +111,7 @@ export function getJobDetail(jobId) {
  */
 export function updateJob(job) {
   return request({
-    url: '/api/enterprise/job',
+    url: '/enterprise/job',
     method: 'put',
     data: job
   })
@@ -124,7 +124,7 @@ export function updateJob(job) {
  */
 export function offlineJob(jobId) {
   return request({
-    url: '/api/enterprise/job/offline',
+    url: '/enterprise/job/offline',
     method: 'put',
     params: { jobId }
   })
@@ -138,7 +138,7 @@ export function offlineJob(jobId) {
  */
 export function batchUpdateJobStatus(jobIds, status) {
   return request({
-    url: '/api/enterprise/job/batch-status',
+    url: '/enterprise/job/batch-status',
     method: 'put',
     data: { jobIds, status }
   })
@@ -151,7 +151,7 @@ export function batchUpdateJobStatus(jobIds, status) {
  */
 export function batchDeleteJobs(jobIds) {
   return request({
-    url: '/api/enterprise/job/batch',
+    url: '/enterprise/job/batch',
     method: 'delete',
     data: jobIds
   })
@@ -164,7 +164,7 @@ export function batchDeleteJobs(jobIds) {
  */
 export function getJobStatistics(jobId) {
   return request({
-    url: '/api/enterprise/job/statistics',
+    url: '/enterprise/job/statistics',
     method: 'get',
     params: { jobId }
   })
@@ -177,7 +177,7 @@ export function getJobStatistics(jobId) {
  */
 export function getEnterpriseJobStatistics(enterpriseId) {
   return request({
-    url: '/api/enterprise/job/enterprise-statistics',
+    url: '/enterprise/job/enterprise-statistics',
     method: 'get',
     params: { enterpriseId }
   })
@@ -191,7 +191,7 @@ export function getEnterpriseJobStatistics(enterpriseId) {
  */
 export function topJob(jobId, isTop = 1) {
   return request({
-    url: '/api/enterprise/job/top',
+    url: '/enterprise/job/top',
     method: 'put',
     params: { jobId, isTop }
   })
@@ -211,7 +211,7 @@ export function topJob(jobId, isTop = 1) {
  */
 export function getJobApplications(page, size, jobId, status) {
   return request({
-    url: '/api/enterprise/talent/applications',
+    url: '/enterprise/talent/applications',
     method: 'get',
     params: { page, size, jobId, status }
   })
@@ -225,7 +225,7 @@ export function getJobApplications(page, size, jobId, status) {
  */
 export function updateApplicationStatus(applicationId, status) {
   return request({
-    url: '/api/enterprise/talent/application/status',
+    url: '/enterprise/talent/application/status',
     method: 'put',
     params: { applicationId, status }
   })
@@ -238,7 +238,7 @@ export function updateApplicationStatus(applicationId, status) {
  */
 export function getResumeDetail(resumeId) {
   return request({
-    url: '/api/enterprise/talent/resume',
+    url: '/enterprise/talent/resume',
     method: 'get',
     params: { resumeId }
   })
@@ -251,7 +251,7 @@ export function getResumeDetail(resumeId) {
  */
 export function sendInterviewInvitation(interview) {
   return request({
-    url: '/api/enterprise/talent/interview',
+    url: '/enterprise/talent/interview',
     method: 'post',
     data: interview
   })
@@ -267,7 +267,7 @@ export function sendInterviewInvitation(interview) {
  */
 export function getEnterpriseInterviews(page, size, enterpriseId, status) {
   return request({
-    url: '/api/enterprise/talent/interviews',
+    url: '/enterprise/talent/interviews',
     method: 'get',
     params: { page, size, enterpriseId, status }
   })
@@ -281,7 +281,7 @@ export function getEnterpriseInterviews(page, size, enterpriseId, status) {
  */
 export function updateInterviewStatus(interviewId, status) {
   return request({
-    url: '/api/enterprise/talent/interview/status',
+    url: '/enterprise/talent/interview/status',
     method: 'put',
     params: { interviewId, status }
   })
@@ -296,7 +296,7 @@ export function updateInterviewStatus(interviewId, status) {
  */
 export function updateInterviewResult(interviewId, result, feedback) {
   return request({
-    url: '/api/enterprise/talent/interview/result',
+    url: '/enterprise/talent/interview/result',
     method: 'put',
     params: { interviewId, result, feedback }
   })
@@ -312,7 +312,7 @@ export function updateInterviewResult(interviewId, result, feedback) {
  */
 export function searchTalents(keyword, careerDirection, education, certification) {
   return request({
-    url: '/api/enterprise/talent/search',
+    url: '/enterprise/talent/search',
     method: 'get',
     params: { keyword, careerDirection, education, certification }
   })
@@ -329,7 +329,7 @@ export function searchTalents(keyword, careerDirection, education, certification
  */
 export function createInterview(interview) {
   return request({
-    url: '/api/interview',
+    url: '/interview',
     method: 'post',
     data: interview
   })
@@ -345,7 +345,7 @@ export function createInterview(interview) {
  */
 export function getEnterpriseInterviewList(enterpriseId, page = 1, size = 10, status) {
   return request({
-    url: '/api/interview/enterprise',
+    url: '/interview/enterprise',
     method: 'get',
     params: { enterpriseId, page, size, status }
   })
@@ -358,7 +358,7 @@ export function getEnterpriseInterviewList(enterpriseId, page = 1, size = 10, st
  */
 export function getInterviewDetail(interviewId) {
   return request({
-    url: '/api/interview/detail',
+    url: '/interview/detail',
     method: 'get',
     params: { interviewId }
   })
@@ -372,7 +372,7 @@ export function getInterviewDetail(interviewId) {
  */
 export function updateInterviewStatusGeneral(interviewId, status) {
   return request({
-    url: '/api/interview/status',
+    url: '/interview/status',
     method: 'put',
     params: { interviewId, status }
   })
@@ -387,7 +387,7 @@ export function updateInterviewStatusGeneral(interviewId, status) {
  */
 export function updateInterviewResultGeneral(interviewId, result, feedback) {
   return request({
-    url: '/api/interview/result',
+    url: '/interview/result',
     method: 'put',
     data: { interviewId, result, feedback }
   })
@@ -404,7 +404,7 @@ export function updateInterviewResultGeneral(interviewId, result, feedback) {
  */
 export function recordInterviewFeedback(interviewId, feedback, evaluation, strengths, weaknesses) {
   return request({
-    url: '/api/interview/feedback',
+    url: '/interview/feedback',
     method: 'post',
     data: { interviewId, feedback, evaluation, strengths, weaknesses }
   })
@@ -420,7 +420,7 @@ export function recordInterviewFeedback(interviewId, feedback, evaluation, stren
  */
 export function updateHireStatus(interviewId, hireStatus, salary, entryDate) {
   return request({
-    url: '/api/interview/hire-status',
+    url: '/interview/hire-status',
     method: 'put',
     data: { interviewId, hireStatus, salary, entryDate }
   })
@@ -433,7 +433,7 @@ export function updateHireStatus(interviewId, hireStatus, salary, entryDate) {
  */
 export function getInterviewStatistics(enterpriseId) {
   return request({
-    url: '/api/interview/statistics',
+    url: '/interview/statistics',
     method: 'get',
     params: { enterpriseId }
   })

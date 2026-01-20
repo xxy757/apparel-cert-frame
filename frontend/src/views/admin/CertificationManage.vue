@@ -178,13 +178,10 @@ export default {
     
     const loadCertifications = async () => {
       try {
-        const response = await request.get('/api/admin/certification/applications', {
+        const response = await request.get('/personal/certification/page', {
           params: {
             page: currentPage.value,
-            size: pageSize.value,
-            username: searchForm.username,
-            certType: searchForm.certType,
-            status: searchForm.status
+            size: pageSize.value
           }
         })
         
