@@ -382,6 +382,30 @@ export default {
     const currentPage = ref(1)
     const pageSize = ref(10)
     const totalContents = ref(0)
+
+    const contentTypeToType = {
+      notice: 1,
+      article: 2,
+      news: 4
+    }
+
+    const typeToContentType = {
+      1: 'notice',
+      2: 'article',
+      3: 'article',
+      4: 'news'
+    }
+
+    const toAnnouncementPayload = () => ({
+      id: contentForm.id || undefined,
+      title: contentForm.title,
+      content: contentForm.content,
+      type: contentTypeToType[contentForm.contentType] || 1,
+      status: Number(contentForm.status),
+      isTop: contentForm.isTop ? 1 : 0,
+      publisherName: contentForm.author,
+      coverImage: contentForm.contentType === 'news' ? contentForm.coverImage : undefined
+    })
     
     // 统计数据
     const noticeCount = computed(() => contents.value.filter(c => c.contentType === 'notice').length)
@@ -395,17 +419,25 @@ export default {
     
     const loadContents = async () => {
       try {
+        const type = activeTab.value === 'all' ? undefined : contentTypeToType[activeTab.value]
         const response = await request.get('/announcement/admin/list', {
           params: {
             page: currentPage.value,
             size: pageSize.value,
-            title: searchForm.title,
-            contentType: activeTab.value === 'all' ? '' : activeTab.value,
-            status: searchForm.status
+            type,
+            keyword: searchForm.title || undefined,
+            status: searchForm.status || undefined
           }
         })
-        
-        contents.value = response.data.records || []
+
+        contents.value = (response.data.records || []).map((item) => ({
+          ...item,
+          contentType: typeToContentType[item.type] || 'notice',
+          author: item.publisherName || item.author || '',
+          viewCount: item.views || 0,
+          createTime: item.publishTime || item.createTime,
+          summary: item.summary || (item.content ? item.content.slice(0, 120) : '')
+        }))
         totalContents.value = response.data.total || 0
       } catch (error) {
         console.error('加载内容失败:', error)
@@ -485,22 +517,15 @@ export default {
       contentFormRef.value.validate(async (valid) => {
         if (valid) {
           try {
-            // 如果是行业动态，调用专门的API
-            if (contentForm.contentType === 'news') {
-              await request.post('/announcement/industry-news', {
-                title: contentForm.title,
-                content: contentForm.content,
-                summary: contentForm.summary,
-                author: contentForm.author,
-                sourceUrl: contentForm.sourceUrl,
-                sourceName: contentForm.sourceName,
-                coverImage: contentForm.coverImage,
-                tags: contentForm.tags,
-                status: parseInt(contentForm.status),
-                isTop: contentForm.isTop
-              })
+            const payload = toAnnouncementPayload()
+            if (isEditing.value) {
+              await request.put('/announcement', payload)
+            } else if (Number(contentForm.status) === 1) {
+              await request.post('/announcement/publish', payload)
+            } else {
+              await request.post('/announcement/draft', payload)
             }
-            
+
             if (isEditing.value) {
               ElMessage.success('内容修改成功')
             } else {
@@ -509,14 +534,8 @@ export default {
             createContentDialogVisible.value = false
             loadContents()
           } catch (error) {
-            // 模拟成功
-            if (isEditing.value) {
-              ElMessage.success('内容修改成功')
-            } else {
-              ElMessage.success(contentForm.status === '1' ? '内容发布成功' : '草稿保存成功')
-            }
-            createContentDialogVisible.value = false
-            loadContents()
+            console.error('保存内容失败:', error)
+            ElMessage.error('保存失败，请稍后重试')
           }
         } else {
           return false
@@ -550,9 +569,10 @@ export default {
         confirmButtonText: '确定',
         cancelButtonText: '取消',
         type: 'info'
-      }).then(() => {
-        content.status = 1
+      }).then(async () => {
+        await request.put('/announcement', { id: content.id, status: 1 })
         ElMessage.success('内容已发布')
+        loadContents()
       }).catch(() => {})
     }
     
@@ -561,9 +581,12 @@ export default {
         confirmButtonText: '确定',
         cancelButtonText: '取消',
         type: 'warning'
-      }).then(() => {
-        content.status = 0
+      }).then(async () => {
+        await request.put('/announcement/offline', null, {
+          params: { announcementId: content.id }
+        })
         ElMessage.success('内容已下架')
+        loadContents()
       }).catch(() => {})
     }
     
@@ -572,12 +595,12 @@ export default {
         confirmButtonText: '确定',
         cancelButtonText: '取消',
         type: 'error'
-      }).then(() => {
-        const index = contents.value.findIndex(c => c.id === content.id)
-        if (index > -1) {
-          contents.value.splice(index, 1)
-        }
+      }).then(async () => {
+        await request.delete('/announcement', {
+          params: { announcementId: content.id }
+        })
         ElMessage.success('内容已删除')
+        loadContents()
       }).catch(() => {})
     }
     

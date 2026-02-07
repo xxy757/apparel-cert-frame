@@ -65,4 +65,12 @@ public interface AuthService {
      * 获取当前登录用户信息
      */
     Map<String, Object> getCurrentUser(String token);
+
+    /**
+     * 开发模式重置密码（根据账号查找用户并重置）
+     * @param account 用户名/邮箱/手机号
+     * @param newPassword 新密码
+     * @return 重置结果
+     */
+    Map<String, Object> devResetPassword(String account, String newPassword);
 }

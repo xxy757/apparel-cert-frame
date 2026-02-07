@@ -27,4 +27,12 @@ public interface UserEnterpriseMapper extends BaseMapper<UserEnterprise> {
      */
     @Select("SELECT * FROM user_enterprise WHERE email = #{email} AND status = 1")
     UserEnterprise findByEmail(@Param("email") String email);
+
+    /**
+     * 根据手机号查询用户
+     * @param phone 手机号
+     * @return 用户信息
+     */
+    @Select("SELECT * FROM user_enterprise WHERE contact_phone = #{phone} AND status = 1")
+    UserEnterprise findByPhone(@Param("phone") String phone);
 }

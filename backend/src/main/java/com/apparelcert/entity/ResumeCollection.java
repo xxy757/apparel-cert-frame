@@ -1,6 +1,7 @@
 package com.apparelcert.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
@@ -36,4 +37,7 @@ public class ResumeCollection extends BaseEntity {
     
     /** 收藏时间 */
     private Date collectTime;
+
+    @TableField(exist = false)
+    private Integer status;
 }

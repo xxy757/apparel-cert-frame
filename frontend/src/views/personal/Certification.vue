@@ -69,13 +69,32 @@
                   </el-tag>
                 </template>
               </el-table-column>
+              <el-table-column label="认证材料" width="120">
+                <template #default="scope">
+                  <el-button
+                    v-if="scope.row.practicalFileUrl"
+                    type="primary"
+                    link
+                    @click="previewApplicationMaterial(scope.row)"
+                  >
+                    查看图片
+                  </el-button>
+                  <span v-else>未上传</span>
+                </template>
+              </el-table-column>
               <el-table-column prop="createTime" label="申请时间" width="180"></el-table-column>
               <el-table-column prop="updateTime" label="更新时间" width="180"></el-table-column>
               <el-table-column label="操作" width="200" fixed="right">
                 <template #default="scope">
                   <el-button type="primary" size="small" @click="viewApplication(scope.row)">查看详情</el-button>
-                  <el-button v-if="scope.row.status === 1" type="success" size="small" @click="startExam(scope.row)">开始考试</el-button>
-                  <el-button v-if="scope.row.status === 2" type="warning" size="small" @click="uploadPractical(scope.row)">上传实操</el-button>
+                  <el-button
+                    v-if="canUploadMaterial(scope.row)"
+                    type="warning"
+                    size="small"
+                    @click="uploadPractical(scope.row)"
+                  >
+                    {{ scope.row.practicalFileUrl ? '更新图片' : '上传图片' }}
+                  </el-button>
                 </template>
               </el-table-column>
             </el-table>
@@ -142,7 +161,7 @@
     </el-card>
     
     <!-- 申请认证对话框 -->
-    <el-dialog v-model="applyDialogVisible" title="申请技能认证" width="600px">
+    <el-dialog v-model="applyDialogVisible" title="申请技能认证" width="600px" @close="handleApplyDialogClose">
       <el-form ref="applyFormRef" :model="applyForm" :rules="applyRules" label-width="120px">
         <el-form-item label="岗位类型" prop="jobType">
           <el-select v-model="applyForm.jobType" placeholder="请选择岗位类型">
@@ -157,27 +176,53 @@
             <el-option label="初级" :value="1"></el-option>
             <el-option label="中级" :value="2"></el-option>
             <el-option label="高级" :value="3"></el-option>
+            <el-option label="专家级" :value="4"></el-option>
           </el-select>
         </el-form-item>
         <el-form-item label="认证项目" prop="standardId">
           <el-select v-model="applyForm.standardId" placeholder="请选择认证项目">
             <el-option
-              v-for="standard in standards"
+              v-for="standard in filteredStandards"
               :key="standard.id"
-              :label="standard.name"
+              :label="formatStandardOptionLabel(standard)"
               :value="standard.id"
-              v-if="standard.jobType === applyForm.jobType && standard.level === applyForm.level"
             ></el-option>
           </el-select>
         </el-form-item>
         <el-form-item label="申请说明">
           <el-input v-model="applyForm.description" type="textarea" :rows="3"></el-input>
         </el-form-item>
+        <el-form-item label="认证图片" required>
+          <el-upload
+            ref="applyUploadRef"
+            drag
+            :auto-upload="false"
+            :limit="1"
+            :file-list="applyImageList"
+            :on-change="handleApplyImageChange"
+            :on-exceed="handleApplyImageExceed"
+            accept=".jpg,.jpeg,.png,.webp"
+            list-type="picture"
+          >
+            <el-icon class="el-icon--upload"><upload-filled /></el-icon>
+            <div class="el-upload__text">
+              将图片拖到此处，或<em>点击上传图片</em>
+            </div>
+            <template #tip>
+              <div class="el-upload__tip">
+                仅支持 JPG/JPEG/PNG/WEBP，图片不超过 10MB
+              </div>
+            </template>
+          </el-upload>
+          <div class="el-upload__tip" style="margin-top: 8px;">
+            选择图片后，点击“提交申请并上传图片”完成提交。
+          </div>
+        </el-form-item>
       </el-form>
       <template #footer>
         <div class="dialog-footer">
-          <el-button @click="applyDialogVisible = false">取消</el-button>
-          <el-button type="primary" @click="submitApplication">提交申请</el-button>
+          <el-button @click="applyDialogVisible = false" :disabled="applying">取消</el-button>
+          <el-button type="primary" @click="submitApplication" :loading="applying">提交申请并上传图片</el-button>
         </div>
       </template>
     </el-dialog>
@@ -240,32 +285,124 @@
         <el-button @click="shareDialogVisible = false">关闭</el-button>
       </template>
     </el-dialog>
+
+    <!-- 认证图片上传对话框 -->
+    <el-dialog v-model="uploadDialogVisible" title="上传认证图片" width="600px" @close="handleUploadDialogClose">
+      <div v-if="currentUploadApp" class="upload-dialog-content">
+        <div class="upload-info">
+          <el-descriptions :column="2" border>
+            <el-descriptions-item label="认证项目">{{ currentUploadApp.standardName }}</el-descriptions-item>
+            <el-descriptions-item label="岗位类型">{{ currentUploadApp.jobTypeLabel }}</el-descriptions-item>
+            <el-descriptions-item label="认证等级">{{ currentUploadApp.levelLabel }}</el-descriptions-item>
+            <el-descriptions-item label="申请时间">{{ currentUploadApp.createTime }}</el-descriptions-item>
+          </el-descriptions>
+        </div>
+
+        <el-alert
+          title="上传要求"
+          type="info"
+          :closable="false"
+          show-icon
+          style="margin: 20px 0;"
+        >
+          <ul class="upload-requirements">
+            <li>支持格式：JPG、JPEG、PNG、WEBP</li>
+            <li>文件大小：不超过 10MB</li>
+            <li>内容要求：上传能证明技能能力的图片材料</li>
+          </ul>
+        </el-alert>
+
+        <el-form :model="uploadForm" label-width="100px">
+          <el-form-item label="选择文件">
+            <el-upload
+              ref="uploadRef"
+              class="upload-demo"
+              drag
+              :auto-upload="false"
+              :limit="1"
+              :on-change="handleFileChange"
+              :on-exceed="handleExceed"
+              :file-list="fileList"
+              accept=".jpg,.jpeg,.png,.webp"
+            >
+              <el-icon class="el-icon--upload"><upload-filled /></el-icon>
+              <div class="el-upload__text">
+                将图片拖到此处，或<em>点击选择图片</em>
+              </div>
+              <template #tip>
+                <div class="el-upload__tip">
+                  支持 JPG/JPEG/PNG/WEBP，图片不超过 10MB
+                </div>
+              </template>
+            </el-upload>
+          </el-form-item>
+
+          <el-form-item v-if="selectedFile" label="文件信息">
+            <div class="file-info">
+              <p><strong>文件名：</strong>{{ selectedFile.name }}</p>
+              <p><strong>文件大小：</strong>{{ formatFileSize(selectedFile.size) }}</p>
+              <p><strong>文件类型：</strong>{{ selectedFile.type || '未知' }}</p>
+            </div>
+          </el-form-item>
+
+          <el-form-item v-if="uploadProgress > 0 && uploadProgress < 100" label="上传进度">
+            <el-progress :percentage="uploadProgress" :status="uploadStatus"></el-progress>
+          </el-form-item>
+        </el-form>
+
+        <div v-if="uploadedFileUrl" class="upload-success">
+          <el-result icon="success" title="上传成功" sub-title="认证图片已成功上传，请等待管理员审核">
+            <template #extra>
+              <div class="uploaded-file-preview">
+                <p>文件URL：{{ uploadedFileUrl }}</p>
+                <el-button type="primary" @click="previewUploadedFile">预览图片</el-button>
+              </div>
+            </template>
+          </el-result>
+        </div>
+      </div>
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="uploadDialogVisible = false" :disabled="uploading">取消</el-button>
+          <el-button type="primary" @click="confirmUpload" :loading="uploading" :disabled="!selectedFile">
+            {{ uploading ? '上传中...' : '确认上传' }}
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script>
-import { ref, reactive, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, reactive, onMounted, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Medal, Bell, Share, CopyDocument, Link } from '@element-plus/icons-vue'
-import { 
-  getMyApplications, 
-  getMyCertificates, 
+import { Medal, Bell, Share, CopyDocument, Link, UploadFilled } from '@element-plus/icons-vue'
+import {
+  getMyApplications,
+  getMyCertificates,
   getCertificationStandards,
   submitNewApplication,
   getExpiringCertificates,
   renewCertificateRequest,
-  getCertificateShareLink
+  getCertificateShareLink,
+  uploadPracticalWork,
+  getApplicationDetail,
+  exportCertificateFile,
+  verifyCertificateNumber
 } from '../../api/certification'
+import { getUserIdForPath } from '@/utils/auth'
 
 export default {
   name: 'CertificationManage',
-  components: { Medal, Bell, Share, CopyDocument, Link },
+  components: { Medal, Bell, Share, CopyDocument, Link, UploadFilled },
   setup() {
-    const router = useRouter()
     const activeTab = ref('application')
     const applyDialogVisible = ref(false)
     const applyFormRef = ref(null)
+    const applyUploadRef = ref(null)
+    const applyImageList = ref([])
+    const applyImageFile = ref(null)
+    const applying = ref(false)
     
     // 证书有效期提醒相关
     const expiryReminderVisible = ref(false)
@@ -276,7 +413,19 @@ export default {
     const shareDialogVisible = ref(false)
     const currentShareCert = ref(null)
     const currentShareLink = ref('')
-    
+
+    // 实操作品上传相关
+    const uploadDialogVisible = ref(false)
+    const currentUploadApp = ref(null)
+    const uploadRef = ref(null)
+    const fileList = ref([])
+    const selectedFile = ref(null)
+    const uploadProgress = ref(0)
+    const uploadStatus = ref('')
+    const uploading = ref(false)
+    const uploadedFileUrl = ref('')
+    const uploadForm = reactive({})
+
     // 数据
     const applications = ref([])
     const certificates = ref([])
@@ -301,6 +450,48 @@ export default {
       ]
     }
 
+    const resetApplyImageState = () => {
+      applyImageList.value = []
+      applyImageFile.value = null
+    }
+
+    const resetApplyFormState = () => {
+      applyForm.jobType = ''
+      applyForm.level = ''
+      applyForm.standardId = ''
+      applyForm.description = ''
+      applyFormRef.value?.clearValidate?.()
+      resetApplyImageState()
+    }
+
+    const handleApplyDialogClose = () => {
+      applying.value = false
+      resetApplyFormState()
+    }
+
+    const handleApplyImageExceed = () => {
+      ElMessage.warning('只能上传一张图片')
+    }
+
+    const handleApplyImageChange = (file) => {
+      if (!file?.raw) return false
+      const allowedTypes = ['image/jpeg', 'image/png', 'image/webp']
+      const ext = (file.name || '').toLowerCase()
+      const extAllowed = ext.endsWith('.jpg') || ext.endsWith('.jpeg') || ext.endsWith('.png') || ext.endsWith('.webp')
+      if (!allowedTypes.includes(file.raw.type) && !extAllowed) {
+        ElMessage.error('仅支持 JPG/JPEG/PNG/WEBP 图片')
+        return false
+      }
+      const maxSize = 10 * 1024 * 1024
+      if (file.raw.size > maxSize) {
+        ElMessage.error('图片大小不能超过 10MB')
+        return false
+      }
+      applyImageFile.value = file.raw
+      applyImageList.value = [file]
+      return true
+    }
+
     const jobTypeLabelMap = {
       designer: '设计师',
       patternmaker: '打版师',
@@ -311,16 +502,100 @@ export default {
     const levelLabelMap = {
       1: '初级',
       2: '中级',
-      3: '高级'
+      3: '高级',
+      4: '专家级'
+    }
+
+    const normalizeJobType = (value) => {
+      const raw = String(value || '').trim()
+      const aliasMap = {
+        designer: 'designer',
+        patternmaker: 'patternmaker',
+        inspector: 'inspector',
+        sales: 'sales',
+        '设计师': 'designer',
+        '打版师': 'patternmaker',
+        '质检员': 'inspector',
+        '导购': 'sales'
+      }
+      return aliasMap[raw] || raw
+    }
+
+    const normalizeLevel = (value) => {
+      const num = Number(value)
+      return Number.isNaN(num) ? null : num
+    }
+
+    const mapStandardRecord = (standard) => ({
+      ...standard,
+      jobType: normalizeJobType(standard.type || standard.jobType),
+      jobTypeLabel: jobTypeLabelMap[normalizeJobType(standard.type || standard.jobType)] || standard.type || standard.jobType,
+      level: normalizeLevel(standard.level),
+      levelLabel: levelLabelMap[normalizeLevel(standard.level)] || standard.level
+    })
+
+    const fetchStandards = async () => {
+      const standardsRes = await getCertificationStandards({ page: 1, size: 100 })
+      const standardRecords = standardsRes.data?.records || standardsRes.data || []
+      standards.value = standardRecords.map(mapStandardRecord)
+    }
+
+    const filteredStandards = computed(() => {
+      const selectedType = normalizeJobType(applyForm.jobType)
+      const selectedLevel = applyForm.level !== '' ? normalizeLevel(applyForm.level) : null
+      const byType = standards.value.filter((standard) => {
+        const standardType = normalizeJobType(standard.jobType || standard.type)
+        return selectedType ? standardType === selectedType : true
+      })
+
+      const exact = byType.filter((standard) => {
+        if (selectedLevel === null) return true
+        return normalizeLevel(standard.level) === selectedLevel
+      })
+      if (exact.length > 0) return exact
+
+      if (byType.length > 0) return byType
+
+      if (selectedLevel !== null) {
+        const byLevel = standards.value.filter(
+          standard => normalizeLevel(standard.level) === selectedLevel
+        )
+        if (byLevel.length > 0) return byLevel
+      }
+
+      return standards.value
+    })
+
+    const formatStandardOptionLabel = (standard) => {
+      const typeText = standard.jobTypeLabel || jobTypeLabelMap[normalizeJobType(standard.jobType || standard.type)] || '-'
+      const levelText = standard.levelLabel || levelLabelMap[normalizeLevel(standard.level)] || '-'
+      return `${standard.name || '未命名项目'}（${typeText} / ${levelText}）`
+    }
+
+    const normalizeFileUrl = (fileUrl) => {
+      if (!fileUrl) return ''
+      if (/^https?:\/\//i.test(fileUrl)) return fileUrl
+      return `${window.location.origin}${fileUrl.startsWith('/') ? '' : '/'}${fileUrl}`
+    }
+
+    const canUploadMaterial = (application) => Number(application?.status) !== 3
+
+    const previewApplicationMaterial = (application) => {
+      const url = normalizeFileUrl(application?.practicalFileUrl || '')
+      if (!url) {
+        ElMessage.warning('当前申请还未上传认证图片')
+        return
+      }
+      window.open(url, '_blank')
     }
     
     const getStatusText = (status) => {
       const statusMap = {
-        0: '待审核',
-        1: '待考试',
-        2: '待评审',
-        3: '通过',
-        4: '不通过'
+        0: '待提交图片',
+        1: '待审核',
+        2: '审核未通过',
+        3: '审核通过',
+        4: '审核未通过'
       }
       return statusMap[status] || '未知'
     }
@@ -329,7 +604,7 @@ export default {
       const typeMap = {
         0: 'info',
         1: 'warning',
-        2: 'warning',
+        2: 'danger',
         3: 'success',
         4: 'danger'
       }
@@ -339,23 +614,20 @@ export default {
     // --- API 调用 ---
     const fetchAllData = async () => {
       try {
-        const userId = Number(localStorage.getItem('userId') || 0)
-        const [applicationsRes, certificatesRes, standardsRes] = await Promise.all([
+        const userId = Number(getUserIdForPath('/personal') || 0)
+        const [applicationsRes, certificatesRes] = await Promise.all([
           getMyApplications({ userId }),
-          getMyCertificates({ userId }),
-          getCertificationStandards({ page: 1, size: 100 })
+          getMyCertificates({ userId })
         ])
-        const standardRecords = standardsRes.data?.records || standardsRes.data || []
-        standards.value = standardRecords.map((standard) => ({
-          ...standard,
-          jobType: standard.type,
-          jobTypeLabel: jobTypeLabelMap[standard.type] || standard.type,
-          levelLabel: levelLabelMap[standard.level] || standard.level
-        }))
+        await fetchStandards()
 
         const findStandardId = (certificationType, level) => {
+          const targetType = normalizeJobType(certificationType)
+          const targetLevel = normalizeLevel(level)
           const matched = standards.value.find(
-            standard => standard.type === certificationType && standard.level === level
+            standard =>
+              normalizeJobType(standard.type || standard.jobType) === targetType &&
+              normalizeLevel(standard.level) === targetLevel
           )
           return matched?.id || null
         }
@@ -363,12 +635,13 @@ export default {
         applications.value = (applicationsRes.data || []).map((application) => ({
           id: application.id,
           standardId: findStandardId(application.certificationType, application.level),
-          standardName: application.projectName || '-',
-          jobTypeLabel: jobTypeLabelMap[application.certificationType] || application.certificationType,
+          standardName: application.projectName || '未命名项目',
+          jobTypeLabel: jobTypeLabelMap[normalizeJobType(application.certificationType)] || application.certificationType,
           levelLabel: levelLabelMap[application.level] || application.level,
           status: application.status,
           createTime: application.applyTime,
-          updateTime: application.reviewTime
+          updateTime: application.reviewTime,
+          practicalFileUrl: application.practicalFileUrl || ''
         }))
 
         certificates.value = (certificatesRes.data || []).map((cert) => {
@@ -390,75 +663,254 @@ export default {
       }
     };
     
-    const applyCertification = () => {
+    const applyCertification = async () => {
+      try {
+        await fetchStandards()
+      } catch (error) {
+        ElMessage.error('加载认证标准失败，请稍后重试')
+        return
+      }
+      if (standards.value.length === 0) {
+        ElMessage.warning('暂无可申请的认证标准')
+        return
+      }
+      resetApplyFormState()
       applyDialogVisible.value = true
     }
     
     const submitApplication = async () => {
       if (!applyFormRef.value) return;
+      if (!applyImageFile.value) {
+        ElMessage.warning('请先上传认证图片')
+        return
+      }
       await applyFormRef.value.validate(async (valid) => {
         if (valid) {
+          applying.value = true
           try {
-            const userId = Number(localStorage.getItem('userId') || 0)
+            const userId = Number(getUserIdForPath('/personal') || 0)
             const selectedStandard = standards.value.find(
-              (standard) => standard.id === applyForm.standardId
+              (standard) => String(standard.id) === String(applyForm.standardId)
             )
-            await submitNewApplication({
+            const finalType = normalizeJobType(
+              selectedStandard?.type || selectedStandard?.jobType || applyForm.jobType
+            )
+            const finalLevel = normalizeLevel(
+              selectedStandard?.level ?? applyForm.level
+            )
+            if (!finalType || finalLevel === null) {
+              ElMessage.error('认证项目信息不完整，请重新选择')
+              return
+            }
+            const createResponse = await submitNewApplication({
               userId,
-              certificationType: applyForm.jobType,
-              level: applyForm.level,
+              certificationType: finalType,
+              level: finalLevel,
               projectName: selectedStandard?.name || ''
             })
-            ElMessage.success('认证申请提交成功，待审核');
+            let certificationId = createResponse?.data?.id
+            if (!certificationId) {
+              const latestRes = await getMyApplications({ userId })
+              const latestList = latestRes?.data || []
+              const matched = latestList
+                .filter(item =>
+                  normalizeJobType(item?.certificationType) === finalType &&
+                  normalizeLevel(item?.level) === finalLevel
+                )
+                .sort((a, b) => Number(b?.id || 0) - Number(a?.id || 0))
+              certificationId = matched[0]?.id
+            }
+            if (!certificationId) {
+              throw new Error('未获取到申请ID')
+            }
+            await uploadPracticalWork(applyImageFile.value, certificationId)
+            ElMessage.success('认证申请提交成功，图片已上传，待管理员审核')
             applyDialogVisible.value = false;
+            resetApplyFormState()
             await fetchAllData(); // 重新加载数据
           } catch (error) {
-            ElMessage.error('申请提交失败');
+            console.error('申请提交失败:', error)
+            ElMessage.error(error?.message || '申请提交失败')
+          } finally {
+            applying.value = false
           }
         }
       });
     }
     
-    const viewApplication = (row) => {
-      // TODO: 查看认证申请详情
-      ElMessage.info('查看详情功能开发中')
+    const viewApplication = async (row) => {
+      try {
+        const response = await getApplicationDetail(row.id)
+        const detail = response.data || {}
+        const text = [
+          `申请ID：${detail.id || row.id || '-'}`,
+          `认证项目：${detail.projectName || row.standardName || '-'}`,
+          `岗位类型：${jobTypeLabelMap[detail.certificationType] || row.jobTypeLabel || '-'}`,
+          `认证等级：${levelLabelMap[detail.level] || row.levelLabel || '-'}`,
+          `当前状态：${getStatusText(detail.status ?? row.status)}`,
+          `认证图片：${(detail.practicalFileUrl || row.practicalFileUrl) ? '已上传' : '未上传'}`,
+          `申请时间：${detail.applyTime || row.createTime || '-'}`,
+          `审核时间：${detail.reviewTime || row.updateTime || '-'}`
+        ].join('\n')
+        ElMessageBox.alert(text, '申请详情', { confirmButtonText: '确定' })
+      } catch (error) {
+        console.error('获取申请详情失败:', error)
+        ElMessage.error('获取申请详情失败，请稍后重试')
+      }
     }
     
-    const startExam = (row) => {
-      router.push({
-        path: '/personal/exam',
-        query: {
-          applicationId: row.id,
-          examId: row.standardId || 1
+    const downloadCertificate = async (cert) => {
+      if (!cert?.id) {
+        ElMessage.warning('证书信息不完整，无法下载')
+        return
+      }
+      try {
+        const response = await exportCertificateFile(cert.id)
+        const fileUrl = response.data
+        if (!fileUrl) {
+          ElMessage.error('未获取到证书下载地址')
+          return
         }
-      })
+        const downloadUrl = /^https?:\/\//i.test(fileUrl)
+          ? fileUrl
+          : `${window.location.origin}${fileUrl.startsWith('/') ? '' : '/'}${fileUrl}`
+        window.open(downloadUrl, '_blank')
+      } catch (error) {
+        console.error('下载证书失败:', error)
+        ElMessage.error('下载证书失败，请稍后重试')
+      }
     }
-    
+
+    // --- 实操作品上传相关函数 ---
     const uploadPractical = (row) => {
-      // TODO: 上传实操作品
-      ElMessage.info('上传实操功能开发中')
+      currentUploadApp.value = row
+      uploadDialogVisible.value = true
+      // 重置上传状态
+      fileList.value = []
+      selectedFile.value = null
+      uploadProgress.value = 0
+      uploadStatus.value = ''
+      uploadedFileUrl.value = ''
     }
-    
-    const downloadCertificate = (cert) => {
-      // TODO: 下载证书
-      ElMessage.info('下载证书功能开发中')
+
+    const handleUploadDialogClose = () => {
+      // 清理上传状态
+      fileList.value = []
+      selectedFile.value = null
+      uploadProgress.value = 0
+      uploadStatus.value = ''
+      uploadedFileUrl.value = ''
+      currentUploadApp.value = null
     }
-    
-    const verifyCertificate = (cert) => {
-      // TODO: 验证证书
-      ElMessage.info('验证证书功能开发中')
+
+    const handleFileChange = (file, uploadFiles) => {
+      // 验证文件类型
+      const allowedTypes = [
+        'image/jpeg',
+        'image/png',
+        'image/webp'
+      ]
+
+      const allowedExtensions = ['.jpg', '.jpeg', '.png', '.webp']
+      const fileExtension = file.name.substring(file.name.lastIndexOf('.')).toLowerCase()
+
+      if (!allowedTypes.includes(file.raw.type) && !allowedExtensions.includes(fileExtension)) {
+        ElMessage.error('仅支持 JPG/JPEG/PNG/WEBP 图片')
+        return false
+      }
+
+      // 验证文件大小（10MB）
+      const maxSize = 10 * 1024 * 1024
+      if (file.raw.size > maxSize) {
+        ElMessage.error('图片大小不能超过 10MB')
+        return false
+      }
+
+      selectedFile.value = file.raw
+      fileList.value = [file]
+      uploadedFileUrl.value = ''
+      return true
+    }
+
+    const handleExceed = () => {
+      ElMessage.warning('只能上传一张图片，请先删除已选择的图片')
+    }
+
+    const formatFileSize = (bytes) => {
+      if (bytes === 0) return '0 B'
+      const k = 1024
+      const sizes = ['B', 'KB', 'MB', 'GB']
+      const i = Math.floor(Math.log(bytes) / Math.log(k))
+      return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i]
+    }
+
+    const confirmUpload = async () => {
+      if (!selectedFile.value || !currentUploadApp.value) {
+        ElMessage.warning('请先选择要上传的图片')
+        return
+      }
+
+      uploading.value = true
+      uploadProgress.value = 0
+      uploadStatus.value = ''
+
+      try {
+        const response = await uploadPracticalWork(
+          selectedFile.value,
+          currentUploadApp.value.id,
+          (progress) => {
+            uploadProgress.value = progress
+          }
+        )
+
+        uploadedFileUrl.value = response?.data?.url || response?.data?.data?.url || ''
+        uploadStatus.value = 'success'
+        ElMessage.success('认证图片上传成功，等待管理员审核')
+        await fetchAllData()
+      } catch (error) {
+        uploadStatus.value = 'exception'
+        ElMessage.error(error.response?.data?.message || '上传图片失败，请稍后重试')
+      } finally {
+        uploading.value = false
+      }
+    }
+
+    const previewUploadedFile = () => {
+      if (uploadedFileUrl.value) {
+        window.open(uploadedFileUrl.value, '_blank')
+      }
+    }
+
+    const verifyCertificate = async (cert) => {
+      if (!cert?.certificateNo) {
+        ElMessage.warning('证书编号缺失，无法验证')
+        return
+      }
+      try {
+        const response = await verifyCertificateNumber(cert.certificateNo)
+        const result = response.data || {}
+        if (result.valid) {
+          ElMessage.success(result.message || '证书验证通过')
+        } else {
+          ElMessage.warning(result.message || '证书验证未通过')
+        }
+      } catch (error) {
+        console.error('验证证书失败:', error)
+        ElMessage.error('验证证书失败，请稍后重试')
+      }
     }
     
     const shareCertificate = async (cert) => {
       try {
         const response = await getCertificateShareLink(cert.id)
-        const shareLink = response.data || `https://apparelcert.com/verify/${cert.certificateNo}`
+        const shareLink = response.data
+        if (!shareLink) {
+          ElMessage.error('未获取到分享链接')
+          return
+        }
         showShareDialog(cert, shareLink)
       } catch (error) {
         ElMessage.error('获取分享链接失败')
-        // 作为备用，仍然可以显示一个模拟/占位链接
-        const fallbackLink = `https://apparelcert.com/verify/${cert.certificateNo}`
-        showShareDialog(cert, fallbackLink)
       }
     }
     
@@ -505,14 +957,21 @@ export default {
     }
     
     const viewStandard = (standard) => {
-      ElMessage.info('查看认证标准详情功能开发中')
+      const text = [
+        `标准ID：${standard.id || '-'}`,
+        `认证项目：${standard.name || '-'}`,
+        `岗位类型：${standard.jobTypeLabel || standard.jobType || '-'}`,
+        `认证等级：${standard.levelLabel || standard.level || '-'}`,
+        `说明：${standard.description || '-'}`
+      ].join('\n')
+      ElMessageBox.alert(text, '认证标准详情', { confirmButtonText: '确定' })
     }
     
     const checkExpiringCertificates = async () => {
       checkingExpiry.value = true
       try {
         const response = await getExpiringCertificates({
-          userId: Number(localStorage.getItem('userId') || 0),
+          userId: Number(getUserIdForPath('/personal') || 0),
           daysBeforeExpire: 30
         })
         if (response.data && response.data.length > 0) {
@@ -559,13 +1018,41 @@ export default {
       fetchAllData();
       checkExpiringCertificates();
     })
+
+    watch(
+      () => [applyForm.jobType, applyForm.level],
+      () => {
+        applyForm.standardId = ''
+      }
+    )
+
+    watch(
+      () => activeTab.value,
+      async (tab) => {
+        if (tab === 'standard') {
+          try {
+            await fetchStandards()
+          } catch (error) {
+            ElMessage.error('刷新认证标准失败')
+          }
+        }
+      }
+    )
     
     return {
       activeTab,
       applyDialogVisible,
       applyFormRef,
+      applyUploadRef,
+      applyImageList,
+      applying,
       applyForm,
       applyRules,
+      filteredStandards,
+      formatStandardOptionLabel,
+      handleApplyDialogClose,
+      handleApplyImageChange,
+      handleApplyImageExceed,
       applications,
       certificates,
       standards,
@@ -574,7 +1061,8 @@ export default {
       applyCertification,
       submitApplication,
       viewApplication,
-      startExam,
+      canUploadMaterial,
+      previewApplicationMaterial,
       uploadPractical,
       downloadCertificate,
       verifyCertificate,
@@ -590,7 +1078,24 @@ export default {
       currentShareCert,
       currentShareLink,
       copyShareLink,
-      shareToSocial
+      shareToSocial,
+      // 实操作品上传相关
+      uploadDialogVisible,
+      currentUploadApp,
+      uploadRef,
+      fileList,
+      selectedFile,
+      uploadProgress,
+      uploadStatus,
+      uploading,
+      uploadedFileUrl,
+      uploadForm,
+      handleUploadDialogClose,
+      handleFileChange,
+      handleExceed,
+      formatFileSize,
+      confirmUpload,
+      previewUploadedFile
     }
   }
 }
@@ -842,5 +1347,57 @@ export default {
 
 .social-btn.twitter:hover {
   background: #1a91da;
+}
+
+/* 实操作品上传对话框样式 */
+.upload-dialog-content {
+  padding: 10px 0;
+}
+
+.upload-info {
+  margin-bottom: 20px;
+}
+
+.upload-requirements {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.upload-requirements li {
+  margin-bottom: 4px;
+  color: #606266;
+}
+
+.upload-demo {
+  width: 100%;
+}
+
+.file-info {
+  background: #f5f7fa;
+  padding: 12px;
+  border-radius: 6px;
+}
+
+.file-info p {
+  margin: 4px 0;
+  color: #606266;
+}
+
+.file-info strong {
+  color: #303133;
+}
+
+.upload-success {
+  margin-top: 20px;
+}
+
+.uploaded-file-preview {
+  text-align: center;
+}
+
+.uploaded-file-preview p {
+  margin-bottom: 12px;
+  color: #909399;
+  word-break: break-all;
 }
 </style>

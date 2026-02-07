@@ -99,6 +99,7 @@ import { ElMessage } from 'element-plus'
 import { ArrowDown, User, SwitchButton } from '@element-plus/icons-vue'
 import request from '@/utils/request'
 import emitter from '@/utils/eventBus'
+import { clearSession, getActiveUserType, getSession } from '@/utils/auth'
 
 export default {
   name: 'PersonalCenter',
@@ -135,18 +136,18 @@ export default {
         const response = await request.get('/auth/current-user')
         if (response.code === 200) {
           const userData = response.data
-          user.name = userData.name || localStorage.getItem('username') || ''
+          user.name = userData.name || getSession('1').username || ''
           user.careerDirection = userData.careerDirection || ''
           user.avatar = userData.avatar || ''
         } else {
           console.error('获取用户信息失败:', response.message)
           // 回退到localStorage中的用户名
-          user.name = localStorage.getItem('username') || ''
+          user.name = getSession('1').username || ''
         }
       } catch (error) {
         console.error('获取用户信息异常:', error)
         // 回退到localStorage中的用户名
-        user.name = localStorage.getItem('username') || ''
+        user.name = getSession('1').username || ''
       }
     }
     
@@ -160,11 +161,8 @@ export default {
     }
     
     const logout = () => {
-      // 清除所有本地存储的用户信息
-      localStorage.removeItem('token')
-      localStorage.removeItem('userType')
-      localStorage.removeItem('userId')
-      localStorage.removeItem('username')
+      // 仅退出个人账号，不影响其他账号类型
+      clearSession('1')
       localStorage.removeItem('savedPassword')
       localStorage.removeItem('savedUsername')
 
@@ -172,7 +170,14 @@ export default {
       sessionStorage.clear()
 
       ElMessage.success('退出登录成功')
-      router.push('/login')
+      const nextType = getActiveUserType()
+      if (nextType === '2') {
+        router.push('/enterprise/job')
+      } else if (nextType === '3') {
+        router.push('/admin/dashboard')
+      } else {
+        router.push('/login')
+      }
     }
     
     return {
@@ -189,15 +194,22 @@ export default {
 .personal-container {
   display: flex;
   min-height: 100vh;
+  height: 100vh;
   background-color: #f5f7fa;
+  overflow: hidden;
 }
 
 .personal-sidebar {
   width: 260px;
+  flex-shrink: 0;
   background-color: #304156;
   color: #bfcbd9;
   display: flex;
   flex-direction: column;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
 }
 
 .user-info {
@@ -231,8 +243,11 @@ export default {
 
 .personal-main {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
 }
 
 .top-header {
@@ -244,6 +259,10 @@ export default {
   justify-content: space-between;
   padding: 0 20px;
   box-shadow: 0 1px 4px rgba(0, 21, 41, 0.08);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  flex-shrink: 0;
 }
 
 .header-left {
@@ -282,6 +301,7 @@ export default {
 
 .personal-content {
   flex: 1;
+  min-height: 0;
   padding: 20px;
   overflow-y: auto;
 }

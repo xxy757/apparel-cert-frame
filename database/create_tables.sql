@@ -85,7 +85,7 @@ CREATE TABLE IF NOT EXISTS certification_application (
     FOREIGN KEY (expert_id) REFERENCES expert(id) ON DELETE SET NULL
 );
 
--- 技能证书表
+-- 技能证书表（历史表，已弃用，保留用于旧数据迁移）
 CREATE TABLE IF NOT EXISTS certification_certificate (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     application_id BIGINT NOT NULL,
@@ -96,7 +96,29 @@ CREATE TABLE IF NOT EXISTS certification_certificate (
     FOREIGN KEY (application_id) REFERENCES certification_application(id) ON DELETE CASCADE
 );
 
--- 理论题库表
+-- 证书表（新结构，用于证书管理模块）
+CREATE TABLE IF NOT EXISTS certificate (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    certification_type VARCHAR(50),
+    level INT,
+    certificate_number VARCHAR(50) NOT NULL UNIQUE COMMENT '证书编号',
+    name VARCHAR(50) COMMENT '持证人姓名',
+    id_card VARCHAR(20) COMMENT '身份证号',
+    issue_date DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '发证日期',
+    expire_date DATETIME COMMENT '有效期',
+    certificate_url VARCHAR(200) COMMENT '证书PDF地址',
+    certificate_status VARCHAR(20) DEFAULT '有效' COMMENT '证书状态',
+    issuer VARCHAR(100) COMMENT '颁发机构',
+    description TEXT COMMENT '证书描述',
+    qr_code_url VARCHAR(200) COMMENT '二维码地址',
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_certificate_user (user_id),
+    INDEX idx_certificate_number (certificate_number)
+);
+
+-- 理论题库表（legacy：新版本使用 question 表）
 CREATE TABLE IF NOT EXISTS question_bank (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     standard_id BIGINT NOT NULL,
@@ -108,6 +130,29 @@ CREATE TABLE IF NOT EXISTS question_bank (
     create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
     update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (standard_id) REFERENCES certification_standard(id) ON DELETE CASCADE
+);
+
+-- 题库表（与后端 Question 实体一致）
+CREATE TABLE IF NOT EXISTS question (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    type VARCHAR(30) NOT NULL COMMENT '题型代码：SINGLE_CHOICE/MULTIPLE_CHOICE/TRUE_FALSE/SHORT_ANSWER',
+    content TEXT NOT NULL,
+    option_a TEXT,
+    option_b TEXT,
+    option_c TEXT,
+    option_d TEXT,
+    correct_answer VARCHAR(100) NOT NULL COMMENT '正确答案',
+    explanation TEXT COMMENT '解析',
+    difficulty VARCHAR(20) DEFAULT 'MEDIUM' COMMENT 'EASY/MEDIUM/HARD',
+    category VARCHAR(100) COMMENT '题目分类',
+    score INT DEFAULT 1 COMMENT '分值',
+    applicable_certification VARCHAR(100) COMMENT '适用认证类型（如 designer）',
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    status TINYINT DEFAULT 1 COMMENT '0:停用, 1:启用',
+    INDEX idx_question_type (type),
+    INDEX idx_question_cert (applicable_certification),
+    INDEX idx_question_category (category)
 );
 
 -- 个人简历表
@@ -165,7 +210,10 @@ CREATE TABLE IF NOT EXISTS resume_delivery (
 -- 面试表
 CREATE TABLE IF NOT EXISTS interview (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    delivery_id BIGINT NOT NULL,
+    delivery_id BIGINT,
+    user_id BIGINT,
+    enterprise_id BIGINT,
+    job_id BIGINT,
     interview_time DATETIME,
     interview_location VARCHAR(200),
     interview_type VARCHAR(20) COMMENT '现场/视频/电话',
@@ -173,8 +221,18 @@ CREATE TABLE IF NOT EXISTS interview (
     status TINYINT DEFAULT 0 COMMENT '0:待确认, 1:已确认, 2:已完成, 3:已取消',
     feedback TEXT,
     result TINYINT DEFAULT 0 COMMENT '0:待录用, 1:已录用, 2:未录用',
+    evaluation INT COMMENT '面试评价（1-5）',
+    strengths TEXT COMMENT '优势',
+    weaknesses TEXT COMMENT '不足',
+    hire_status TINYINT DEFAULT 0 COMMENT '0:待定 1:录用 2:不录用',
+    salary VARCHAR(50) COMMENT '薪资',
+    entry_date VARCHAR(50) COMMENT '入职日期',
+    remark TEXT COMMENT '备注',
     create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
     update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_interview_enterprise (enterprise_id),
+    INDEX idx_interview_job (job_id),
+    INDEX idx_interview_user (user_id),
     FOREIGN KEY (delivery_id) REFERENCES resume_delivery(id) ON DELETE CASCADE
 );
 
@@ -237,15 +295,22 @@ CREATE TABLE IF NOT EXISTS scheduled_delivery (
     FOREIGN KEY (resume_id) REFERENCES resume(id) ON DELETE CASCADE
 );
 
--- 系统公告表
-CREATE TABLE IF NOT EXISTS system_announcement (
+-- 公告表（后台公告管理使用）
+CREATE TABLE IF NOT EXISTS announcement (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     title VARCHAR(100) NOT NULL,
     content TEXT NOT NULL,
-    author VARCHAR(50),
+    type INT DEFAULT 1 COMMENT '1-系统公告 2-活动通知 3-政策法规 4-行业动态',
+    status TINYINT DEFAULT 1 COMMENT '0-草稿 1-已发布 2-已下架',
+    is_top TINYINT DEFAULT 0 COMMENT '是否置顶',
+    publish_time DATETIME COMMENT '发布时间',
+    publisher_id BIGINT COMMENT '发布人ID',
+    publisher_name VARCHAR(50) COMMENT '发布人姓名',
+    views INT DEFAULT 0 COMMENT '浏览次数',
+    cover_image VARCHAR(200) COMMENT '封面图片',
+    attachment_url VARCHAR(200) COMMENT '附件URL',
     create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
-    update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    status TINYINT DEFAULT 1 COMMENT '0:草稿, 1:发布'
+    update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
 -- 操作日志表
@@ -368,11 +433,13 @@ CREATE TABLE IF NOT EXISTS certification (
     review_time DATETIME COMMENT '评审时间',
     reviewer_id BIGINT COMMENT '评审人ID',
     certificate_url VARCHAR(200) COMMENT '证书URL',
+    practical_file_url VARCHAR(500) COMMENT '实操作品文件URL',
     expire_time DATETIME COMMENT '过期时间',
     create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
     update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_user_id (user_id),
-    INDEX idx_status (status)
+    INDEX idx_status (status),
+    INDEX idx_practical_file (practical_file_url)
 );
 
 -- 岗位表（简化版）
@@ -383,7 +450,14 @@ CREATE TABLE IF NOT EXISTS job (
     type VARCHAR(50) COMMENT '岗位类型',
     level VARCHAR(20) COMMENT '级别要求',
     salary VARCHAR(50) COMMENT '薪资范围',
+    salary_min INT COMMENT '薪资下限（K）',
+    salary_max INT COMMENT '薪资上限（K）',
     location VARCHAR(100) COMMENT '工作地点',
+    work_type VARCHAR(20) COMMENT '工作性质',
+    recruit_num INT COMMENT '招聘人数',
+    skills TEXT COMMENT '技能要求（逗号分隔）',
+    certification_requirement VARCHAR(100) COMMENT '技能认证要求',
+    is_urgent TINYINT DEFAULT 0 COMMENT '是否急聘',
     education VARCHAR(50) COMMENT '学历要求',
     experience INT COMMENT '经验要求（年）',
     description TEXT COMMENT '岗位描述',

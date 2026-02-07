@@ -127,7 +127,7 @@
         </div>
         
         <div class="resume-actions">
-          <el-button type="success" @click="exportResume">导出PDF</el-button>
+          <el-button type="success" @click="exportResume" :loading="exportLoading">导出PDF</el-button>
           <el-switch
             v-model="resume.isPublic"
             active-text="公开"
@@ -197,8 +197,91 @@
               </el-form-item>
             </div>
           </el-card>
-          
-          <!-- 工作经历、项目经验、技能证书等编辑部分类似，此处省略 -->
+
+          <el-card shadow="hover" class="edit-section">
+            <template #header>
+              <div class="section-header">
+                <h3>工作经历</h3>
+                <el-button type="primary" size="small" @click="addWorkExperience">添加工作经历</el-button>
+              </div>
+            </template>
+            <div v-if="resume.workExperience.length === 0" class="empty-edit-tip">
+              暂无工作经历，点击右上角按钮添加
+            </div>
+            <div v-for="(work, index) in resume.workExperience" :key="index" class="form-item-group">
+              <div class="group-header">
+                <span>工作经历 {{ index + 1 }}</span>
+                <el-button type="danger" size="small" @click="removeWorkExperience(index)">删除</el-button>
+              </div>
+              <el-form-item :label="'公司名称 ' + (index + 1)">
+                <el-input v-model="work.company"></el-input>
+              </el-form-item>
+              <el-form-item :label="'职位名称 ' + (index + 1)">
+                <el-input v-model="work.position"></el-input>
+              </el-form-item>
+              <div class="date-range">
+                <el-form-item :label="'开始时间 ' + (index + 1)">
+                  <el-date-picker v-model="work.startDate" type="date" format="YYYY-MM" value-format="YYYY-MM"></el-date-picker>
+                </el-form-item>
+                <el-form-item :label="'结束时间 ' + (index + 1)">
+                  <el-date-picker v-model="work.endDate" type="date" format="YYYY-MM" value-format="YYYY-MM"></el-date-picker>
+                </el-form-item>
+              </div>
+              <el-form-item :label="'工作职责 ' + (index + 1)">
+                <div class="nested-list">
+                  <div v-for="(resp, respIndex) in work.responsibilities" :key="`${index}-${respIndex}`" class="nested-item-row">
+                    <el-input v-model="work.responsibilities[respIndex]" placeholder="请输入工作职责"></el-input>
+                    <el-button type="danger" text @click="removeResponsibility(index, respIndex)">删除</el-button>
+                  </div>
+                  <el-button type="primary" link @click="addResponsibility(index)">+ 添加职责</el-button>
+                </div>
+              </el-form-item>
+            </div>
+          </el-card>
+
+          <el-card shadow="hover" class="edit-section">
+            <template #header>
+              <div class="section-header">
+                <h3>项目经验</h3>
+                <el-button type="primary" size="small" @click="addProjectExperience">添加项目经验</el-button>
+              </div>
+            </template>
+            <div v-if="resume.projectExperience.length === 0" class="empty-edit-tip">
+              暂无项目经验，点击右上角按钮添加
+            </div>
+            <div v-for="(project, index) in resume.projectExperience" :key="index" class="form-item-group">
+              <div class="group-header">
+                <span>项目经验 {{ index + 1 }}</span>
+                <el-button type="danger" size="small" @click="removeProjectExperience(index)">删除</el-button>
+              </div>
+              <el-form-item :label="'项目名称 ' + (index + 1)">
+                <el-input v-model="project.name"></el-input>
+              </el-form-item>
+              <el-form-item :label="'担任角色 ' + (index + 1)">
+                <el-input v-model="project.role"></el-input>
+              </el-form-item>
+              <div class="date-range">
+                <el-form-item :label="'开始时间 ' + (index + 1)">
+                  <el-date-picker v-model="project.startDate" type="date" format="YYYY-MM" value-format="YYYY-MM"></el-date-picker>
+                </el-form-item>
+                <el-form-item :label="'结束时间 ' + (index + 1)">
+                  <el-date-picker v-model="project.endDate" type="date" format="YYYY-MM" value-format="YYYY-MM"></el-date-picker>
+                </el-form-item>
+              </div>
+              <el-form-item :label="'项目描述 ' + (index + 1)">
+                <el-input v-model="project.description" type="textarea" :rows="3"></el-input>
+              </el-form-item>
+              <el-form-item :label="'项目成果 ' + (index + 1)">
+                <div class="nested-list">
+                  <div v-for="(achievement, achIndex) in project.achievements" :key="`${index}-${achIndex}`" class="nested-item-row">
+                    <el-input v-model="project.achievements[achIndex]" placeholder="请输入项目成果"></el-input>
+                    <el-button type="danger" text @click="removeAchievement(index, achIndex)">删除</el-button>
+                  </div>
+                  <el-button type="primary" link @click="addAchievement(index)">+ 添加成果</el-button>
+                </div>
+              </el-form-item>
+            </div>
+          </el-card>
           
           <div class="form-actions">
             <el-button type="primary" @click="saveResume">保存简历</el-button>
@@ -215,6 +298,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Medal, Refresh } from '@element-plus/icons-vue'
 import request from '../../utils/request'
+import { getTokenForPath, getUserIdForPath } from '@/utils/auth'
 
 export default {
   name: 'ResumeManage',
@@ -227,6 +311,7 @@ export default {
     const resumeForm = ref(null)
     const loading = ref(false)
     const checkingCerts = ref(false)
+    const exportLoading = ref(false)
     
     // 认证同步相关
     const showCertSyncTip = ref(false)
@@ -262,6 +347,109 @@ export default {
         { type: 'email', message: '请输入正确的邮箱地址', trigger: 'blur' }
       ]
     }
+
+    const splitTextToArray = (value) => {
+      if (Array.isArray(value)) {
+        return value
+          .map(item => (item == null ? '' : String(item).trim()))
+          .filter(Boolean)
+      }
+      if (typeof value === 'string') {
+        return value
+          .split(/\r?\n|；|;|、|，|,/)
+          .map(item => item.trim())
+          .filter(Boolean)
+      }
+      return []
+    }
+
+    const normalizeWorkExperience = (list) => {
+      if (!Array.isArray(list)) return []
+      return list.map(item => {
+        const work = item && typeof item === 'object' ? item : {}
+        return {
+          company: work.company || '',
+          position: work.position || '',
+          startDate: work.startDate || '',
+          endDate: work.endDate || '',
+          responsibilities: splitTextToArray(work.responsibilities)
+        }
+      })
+    }
+
+    const normalizeProjectExperience = (list) => {
+      if (!Array.isArray(list)) return []
+      return list.map(item => {
+        const project = item && typeof item === 'object' ? item : {}
+        return {
+          name: project.name || '',
+          role: project.role || '',
+          startDate: project.startDate || '',
+          endDate: project.endDate || '',
+          description: project.description || '',
+          achievements: splitTextToArray(project.achievements)
+        }
+      })
+    }
+
+    const sanitizeWorkExperience = (list) => {
+      if (!Array.isArray(list)) return []
+      return list
+        .map(item => ({
+          company: item?.company?.trim?.() || '',
+          position: item?.position?.trim?.() || '',
+          startDate: item?.startDate || '',
+          endDate: item?.endDate || '',
+          responsibilities: splitTextToArray(item?.responsibilities)
+        }))
+        .filter(item =>
+          item.company ||
+          item.position ||
+          item.startDate ||
+          item.endDate ||
+          item.responsibilities.length > 0
+        )
+    }
+
+    const sanitizeProjectExperience = (list) => {
+      if (!Array.isArray(list)) return []
+      return list
+        .map(item => ({
+          name: item?.name?.trim?.() || '',
+          role: item?.role?.trim?.() || '',
+          startDate: item?.startDate || '',
+          endDate: item?.endDate || '',
+          description: item?.description?.trim?.() || '',
+          achievements: splitTextToArray(item?.achievements)
+        }))
+        .filter(item =>
+          item.name ||
+          item.role ||
+          item.startDate ||
+          item.endDate ||
+          item.description ||
+          item.achievements.length > 0
+        )
+    }
+
+    const buildResumePayload = () => {
+      const workExperience = sanitizeWorkExperience(resume.workExperience)
+      const projectExperience = sanitizeProjectExperience(resume.projectExperience)
+
+      // 保持前端状态与提交数据一致，避免保存后预览出现旧结构。
+      resume.workExperience = workExperience
+      resume.projectExperience = projectExperience
+
+      return {
+        basicInfo: resume.basicInfo,
+        education: resume.education,
+        workExperience,
+        projectExperience,
+        skills: resume.skills,
+        certificates: resume.certificates,
+        isPublic: resume.isPublic
+      }
+    }
     
     // 检查新认证
     const checkCertifications = async () => {
@@ -269,7 +457,7 @@ export default {
       try {
         // 获取用户已通过的认证列表
         const response = await request.get('/admin/certification/certificate/by-user', {
-          params: { userId: Number(localStorage.getItem('userId') || 0) }
+          params: { userId: Number(getUserIdForPath('/personal') || 0) }
         })
         
         if (response.data && response.data.length > 0) {
@@ -313,15 +501,8 @@ export default {
         resume.certificates = [...resume.certificates, ...certsToAdd]
         
         // 保存简历
-        await request.put('/resume', {
-          basicInfo: resume.basicInfo,
-          education: resume.education,
-          workExperience: resume.workExperience,
-          projectExperience: resume.projectExperience,
-          skills: resume.skills,
-          certificates: resume.certificates,
-          isPublic: resume.isPublic
-        })
+        const payload = buildResumePayload()
+        await request.put('/resume', payload)
         
         showCertSyncTip.value = false
         newCertifications.value = []
@@ -349,8 +530,8 @@ export default {
           // 更新简历数据
           Object.assign(resume.basicInfo, response.data.basicInfo || {})
           resume.education = response.data.education || []
-          resume.workExperience = response.data.workExperience || []
-          resume.projectExperience = response.data.projectExperience || []
+          resume.workExperience = normalizeWorkExperience(response.data.workExperience || [])
+          resume.projectExperience = normalizeProjectExperience(response.data.projectExperience || [])
           resume.skills = response.data.skills || []
           resume.certificates = response.data.certificates || []
           resume.isPublic = response.data.isPublic || false
@@ -389,15 +570,8 @@ export default {
         loading.value = true
         try {
           // 调用保存简历接口
-          await request.put('/resume', {
-            basicInfo: resume.basicInfo,
-            education: resume.education,
-            workExperience: resume.workExperience,
-            projectExperience: resume.projectExperience,
-            skills: resume.skills,
-            certificates: resume.certificates,
-            isPublic: resume.isPublic
-          })
+          const payload = buildResumePayload()
+          await request.put('/resume', payload)
 
           isEditing.value = false
           ElMessage.success('简历保存成功')
@@ -417,15 +591,18 @@ export default {
     }
 
     const exportResume = async () => {
-      loading.value = true
+      if (exportLoading.value) return
+      exportLoading.value = true
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 20000)
       try {
-        // 使用原生 fetch 来获取 blob 数据，避免 axios 拦截器干扰
-        const token = localStorage.getItem('token')
+        const token = getTokenForPath('/personal')
         const response = await fetch('/api/resume/export', {
           method: 'GET',
           headers: {
             'Authorization': `Bearer ${token}`
-          }
+          },
+          signal: controller.signal
         })
 
         if (!response.ok) {
@@ -447,9 +624,14 @@ export default {
         ElMessage.success('简历导出成功')
       } catch (error) {
         console.error('导出简历失败:', error)
-        ElMessage.error('导出简历失败，请重试')
+        if (error.name === 'AbortError') {
+          ElMessage.error('导出超时，请稍后重试')
+        } else {
+          ElMessage.error('导出简历失败，请重试')
+        }
       } finally {
-        loading.value = false
+        clearTimeout(timeoutId)
+        exportLoading.value = false
       }
     }
 
@@ -493,6 +675,69 @@ export default {
         ElMessage.warning('至少保留一条教育经历')
       }
     }
+
+    const createWorkExperienceItem = () => ({
+      company: '',
+      position: '',
+      startDate: '',
+      endDate: '',
+      responsibilities: ['']
+    })
+
+    const addWorkExperience = () => {
+      resume.workExperience.push(createWorkExperienceItem())
+    }
+
+    const removeWorkExperience = (index) => {
+      resume.workExperience.splice(index, 1)
+    }
+
+    const addResponsibility = (workIndex) => {
+      const work = resume.workExperience[workIndex]
+      if (!work) return
+      if (!Array.isArray(work.responsibilities)) {
+        work.responsibilities = []
+      }
+      work.responsibilities.push('')
+    }
+
+    const removeResponsibility = (workIndex, responsibilityIndex) => {
+      const work = resume.workExperience[workIndex]
+      if (!work || !Array.isArray(work.responsibilities)) return
+      work.responsibilities.splice(responsibilityIndex, 1)
+    }
+
+    const createProjectExperienceItem = () => ({
+      name: '',
+      role: '',
+      startDate: '',
+      endDate: '',
+      description: '',
+      achievements: ['']
+    })
+
+    const addProjectExperience = () => {
+      resume.projectExperience.push(createProjectExperienceItem())
+    }
+
+    const removeProjectExperience = (index) => {
+      resume.projectExperience.splice(index, 1)
+    }
+
+    const addAchievement = (projectIndex) => {
+      const project = resume.projectExperience[projectIndex]
+      if (!project) return
+      if (!Array.isArray(project.achievements)) {
+        project.achievements = []
+      }
+      project.achievements.push('')
+    }
+
+    const removeAchievement = (projectIndex, achievementIndex) => {
+      const project = resume.projectExperience[projectIndex]
+      if (!project || !Array.isArray(project.achievements)) return
+      project.achievements.splice(achievementIndex, 1)
+    }
     
     return {
       isEditing,
@@ -508,8 +753,17 @@ export default {
       togglePublic,
       addEducation,
       removeEducation,
+      addWorkExperience,
+      removeWorkExperience,
+      addResponsibility,
+      removeResponsibility,
+      addProjectExperience,
+      removeProjectExperience,
+      addAchievement,
+      removeAchievement,
       // 认证同步相关
       checkingCerts,
+      exportLoading,
       showCertSyncTip,
       newCertifications,
       checkCertifications,
@@ -783,6 +1037,27 @@ export default {
   margin-bottom: 20px;
   font-weight: 600;
   color: #1d1d1f;
+}
+
+.empty-edit-tip {
+  color: #909399;
+  font-size: 14px;
+  padding: 4px 6px 10px;
+}
+
+.nested-list {
+  width: 100%;
+}
+
+.nested-item-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.nested-item-row .el-input {
+  flex: 1;
 }
 
 .date-range {

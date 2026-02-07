@@ -205,15 +205,16 @@ export function topJob(jobId, isTop = 1) {
  * 获取岗位投递记录
  * @param {number} page - 页码
  * @param {number} size - 每页大小
- * @param {number} jobId - 职位ID
+ * @param {number} jobId - 职位ID（可选）
+ * @param {number} enterpriseId - 企业ID（可选）
  * @param {number} status - 投递状态（可选）
  * @returns {Promise}
  */
-export function getJobApplications(page, size, jobId, status) {
+export function getJobApplications(page, size, jobId, status, enterpriseId) {
   return request({
     url: '/enterprise/talent/applications',
     method: 'get',
-    params: { page, size, jobId, status }
+    params: { page, size, jobId, status, enterpriseId }
   })
 }
 
@@ -241,6 +242,19 @@ export function getResumeDetail(resumeId) {
     url: '/enterprise/talent/resume',
     method: 'get',
     params: { resumeId }
+  })
+}
+
+/**
+ * 根据用户ID获取简历详情
+ * @param {number} userId - 用户ID
+ * @returns {Promise}
+ */
+export function getResumeByUserId(userId) {
+  return request({
+    url: '/enterprise/talent/resume/user',
+    method: 'get',
+    params: { userId }
   })
 }
 

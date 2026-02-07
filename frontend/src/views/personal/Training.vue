@@ -16,7 +16,8 @@
         >
           <template #append>
             <el-button type="primary" @click="searchTrainings">
-              <i class="el-icon-search"></i> 搜索
+              <el-icon class="button-icon"><Search /></el-icon>
+              搜索
             </el-button>
           </template>
         </el-input>
@@ -104,7 +105,7 @@
     <div class="training-list-section">
       <div class="section-header">
         <h3>推荐课程</h3>
-        <span class="result-count">{{ trainings.length }} 个课程</span>
+        <span class="result-count">{{ totalTrainings || trainings.length }} 个课程</span>
       </div>
 
       <div class="training-list">
@@ -170,8 +171,9 @@
                 </div>
               </div>
               <el-button type="primary" @click.stop="enrollTraining(training)">
-                <el-icon v-if="training.externalUrl"><Link /></el-icon>
-                <i v-else class="el-icon-plus"></i> {{ training.externalUrl ? '外部报名' : '立即报名' }}
+                <el-icon class="button-icon" v-if="training.externalUrl"><Link /></el-icon>
+                <el-icon class="button-icon" v-else><Plus /></el-icon>
+                {{ training.externalUrl ? '外部报名' : '立即报名' }}
               </el-button>
             </div>
           </div>
@@ -187,7 +189,7 @@
           :page-sizes="[12, 24, 48]"
           :page-size="pageSize"
           layout="total, sizes, prev, pager, next, jumper"
-          :total="trainings.length"
+          :total="totalTrainings"
         ></el-pagination>
       </div>
     </div>
@@ -195,7 +197,7 @@
     <!-- 培训详情对话框 -->
     <el-dialog
       v-model="dialogVisible"
-      :title="selectedTraining.title"
+      :title="selectedTraining?.title || '培训详情'"
       width="800px"
       @close="resetSelectedTraining"
     >
@@ -354,10 +356,12 @@
               </div>
               
               <el-button type="primary" size="large" block @click="enrollTraining(selectedTraining)">
-                <i class="el-icon-plus"></i> 立即报名
+                <el-icon class="button-icon"><Plus /></el-icon>
+                立即报名
               </el-button>
               <el-button size="large" block @click="addFavorite(selectedTraining)">
-                <i class="el-icon-star-on"></i> 收藏课程
+                <el-icon class="button-icon"><StarFilled /></el-icon>
+                收藏课程
               </el-button>
             </el-card>
           </div>
@@ -370,7 +374,9 @@
 <script>
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Clock, Calendar, View, User, Coin, Location, Check, Link } from '@element-plus/icons-vue'
+import { Clock, Calendar, View, User, Coin, Location, Check, Link, Search, Plus, StarFilled } from '@element-plus/icons-vue'
+import request from '@/utils/request'
+import { getUserIdForPath } from '@/utils/auth'
 
 export default {
   name: 'Training',
@@ -382,7 +388,10 @@ export default {
     Coin,
     Location,
     Check,
-    Link
+    Link,
+    Search,
+    Plus,
+    StarFilled
   },
   setup() {
     // 搜索和筛选数据
@@ -397,224 +406,8 @@ export default {
     })
 
     // 培训课程数据
-    const trainings = ref([
-      {
-        id: 1,
-        title: '高级服装设计与创意开发',
-        description: '本课程将深入讲解高级服装设计的理念和方法，包括创意构思、面料选择、色彩搭配、款式设计等方面的内容。通过实际案例分析和实践操作，提升学员的设计能力和创新思维。',
-        category: '服装设计',
-        format: '线上培训',
-        level: '高级',
-        duration: '2个月',
-        startDate: '2024-06-15',
-        price: 3999,
-        originalPrice: 4999,
-        discount: 8,
-        certification: '行业认证',
-        isHot: true,
-        enrollmentCount: 156,
-        rating: 4.8,
-        image: 'https://via.placeholder.com/400x200/FFD700/FFFFFF?text=服装设计课程',
-        externalUrl: 'https://www.example.com/course/fashion-design',
-        trainer: {
-          name: '张设计师',
-          title: '首席设计师',
-          avatar: 'https://via.placeholder.com/60',
-          bio: '拥有15年服装设计经验，曾任职于国际知名品牌，多次获得国内外设计奖项。'
-        },
-        modules: [
-          {
-            title: '模块一：设计理论与创意构思',
-            description: '学习服装设计的基本理论和创意构思方法，掌握设计灵感的获取和转化技巧。',
-            duration: '2周'
-          },
-          {
-            title: '模块二：面料与色彩搭配',
-            description: '了解各种服装面料的特性和应用，掌握色彩搭配的原则和技巧。',
-            duration: '2周'
-          },
-          {
-            title: '模块三：款式设计与结构',
-            description: '学习服装款式设计的方法和技巧，掌握服装结构的基本原理。',
-            duration: '3周'
-          },
-          {
-            title: '模块四：设计实践与作品集',
-            description: '通过实际设计项目，提升设计实践能力，完成个人作品集。',
-            duration: '3周'
-          }
-        ],
-        benefits: [
-          '掌握高级服装设计的核心技能',
-          '提升创新思维和设计能力',
-          '获得行业认证证书',
-          '建立个人设计作品集',
-          '拓展行业人脉资源'
-        ],
-        targetAudience: '有一定设计基础的服装从业者',
-        location: '线上'
-      },
-      {
-        id: 2,
-        title: '服装打版与工艺技术',
-        description: '本课程将系统讲解服装打版的基本原理和工艺技术，包括平面打版、立体裁剪、工艺制作等方面的内容。通过实际操作，提升学员的打版技能和工艺水平。',
-        category: '服装打版',
-        format: '线下培训',
-        level: '中级',
-        duration: '1个月',
-        startDate: '2024-07-01',
-        price: 2999,
-        certification: '技能证书',
-        isHot: false,
-        enrollmentCount: 89,
-        rating: 4.6,
-        image: 'https://via.placeholder.com/400x200/87CEEB/FFFFFF?text=服装打版课程',
-        externalUrl: 'https://www.example.com/course/pattern-making',
-        trainer: {
-          name: '李打版师',
-          title: '高级打版师',
-          avatar: 'https://via.placeholder.com/60',
-          bio: '拥有20年服装打版经验，曾为多个知名品牌提供打版服务，技术精湛。'
-        },
-        modules: [
-          {
-            title: '模块一：打版基础理论',
-            description: '学习服装打版的基本原理和术语，掌握人体测量和尺寸设计。',
-            duration: '1周'
-          },
-          {
-            title: '模块二：平面打版技术',
-            description: '掌握服装平面打版的方法和技巧，包括上衣、裤子、裙子等基本款式的打版。',
-            duration: '2周'
-          },
-          {
-            title: '模块三：立体裁剪技术',
-            description: '学习立体裁剪的基本方法和技巧，提升造型能力。',
-            duration: '2周'
-          },
-          {
-            title: '模块四：工艺制作与调整',
-            description: '掌握服装工艺制作的基本方法，学习版型调整和优化。',
-            duration: '1周'
-          }
-        ],
-        benefits: [
-          '掌握服装打版的核心技术',
-          '提升工艺制作能力',
-          '获得技能证书',
-          '适应不同品牌的打版要求',
-          '提高工作效率和质量'
-        ],
-        targetAudience: '服装打版师和相关从业者',
-        location: '北京、上海、广州'
-      },
-      {
-        id: 3,
-        title: '服装质检与质量控制',
-        description: '本课程将全面讲解服装质检的标准和方法，包括面料检验、成衣检验、质量控制等方面的内容。通过实际案例分析，提升学员的质检能力和质量意识。',
-        category: '服装质检',
-        format: '混合培训',
-        level: '初级',
-        duration: '2周',
-        startDate: '2024-06-20',
-        price: 1999,
-        certification: '企业认证',
-        isHot: true,
-        enrollmentCount: 123,
-        rating: 4.7,
-        image: 'https://via.placeholder.com/400x200/98FB98/000000?text=服装质检课程',
-        trainer: {
-          name: '王质检员',
-          title: '质量总监',
-          avatar: 'https://via.placeholder.com/60',
-          bio: '拥有18年服装质量控制经验，熟悉国内外质量标准和检测方法。'
-        },
-        modules: [
-          {
-            title: '模块一：质检基础知识',
-            description: '学习服装质量检验的基本概念和标准，掌握质检的基本流程。',
-            duration: '3天'
-          },
-          {
-            title: '模块二：面料检验技术',
-            description: '掌握各种服装面料的检验方法和标准，识别常见的面料缺陷。',
-            duration: '3天'
-          },
-          {
-            title: '模块三：成衣检验技术',
-            description: '学习成衣检验的方法和标准，掌握不同服装品类的检验要点。',
-            duration: '4天'
-          },
-          {
-            title: '模块四：质量控制与管理',
-            description: '了解服装质量控制的方法和工具，掌握质量管理的基本原理。',
-            duration: '4天'
-          }
-        ],
-        benefits: [
-          '掌握服装质检的核心技能',
-          '提升质量控制能力',
-          '获得企业认证证书',
-          '适应不同客户的质量要求',
-          '提高产品质量和客户满意度'
-        ],
-        targetAudience: '服装质检人员和质量管理人员',
-        location: '线上+线下'
-      },
-      {
-        id: 4,
-        title: '服装营销与品牌管理',
-        description: '本课程将系统讲解服装营销的策略和方法，包括市场分析、品牌建设、渠道管理、促销策划等方面的内容。通过实际案例分析，提升学员的营销能力和品牌意识。',
-        category: '服装营销',
-        format: '线上培训',
-        level: '中级',
-        duration: '1.5个月',
-        startDate: '2024-07-10',
-        price: 2599,
-        certification: '行业认证',
-        isHot: false,
-        enrollmentCount: 98,
-        rating: 4.5,
-        image: 'https://via.placeholder.com/400x200/FF69B4/FFFFFF?text=服装营销课程',
-        trainer: {
-          name: '刘营销师',
-          title: '营销总监',
-          avatar: 'https://via.placeholder.com/60',
-          bio: '拥有12年服装营销经验，曾成功打造多个服装品牌，营销业绩突出。'
-        },
-        modules: [
-          {
-            title: '模块一：服装市场分析',
-            description: '学习服装市场的分析方法，掌握市场调研和消费者行为分析。',
-            duration: '2周'
-          },
-          {
-            title: '模块二：品牌建设与管理',
-            description: '了解服装品牌建设的方法和策略，掌握品牌管理的基本原理。',
-            duration: '2周'
-          },
-          {
-            title: '模块三：渠道管理与销售',
-            description: '学习服装渠道管理的方法和技巧，掌握销售管理的基本原理。',
-            duration: '2周'
-          },
-          {
-            title: '模块四：促销策划与执行',
-            description: '掌握服装促销策划的方法和技巧，提升促销活动的执行能力。',
-            duration: '1周'
-          }
-        ],
-        benefits: [
-          '掌握服装营销的核心技能',
-          '提升品牌建设能力',
-          '获得行业认证证书',
-          '提高销售业绩和市场份额',
-          '拓展职业发展空间'
-        ],
-        targetAudience: '服装营销人员和品牌管理人员',
-        location: '线上'
-      }
-    ])
+    const trainings = ref([])
+    const totalTrainings = ref(0)
 
     // 分页数据
     const currentPage = ref(1)
@@ -622,17 +415,20 @@ export default {
 
     // 培训详情对话框
     const dialogVisible = ref(false)
-    const selectedTraining = ref({})
+    const selectedTraining = ref(null)
 
     // 生命周期钩子
     onMounted(() => {
-      console.log('Training page loaded')
+      loadTrainings()
     })
 
     // 搜索培训
     const searchTrainings = () => {
-      // TODO: 调用API搜索培训
-      ElMessage.info('搜索功能开发中')
+      currentPage.value = 1
+      if (filters.format || filters.duration || filters.certification || filters.priceRange) {
+        ElMessage.info('部分筛选项暂未接入，已按课程类别/等级搜索')
+      }
+      loadTrainings()
     }
 
     // 重置筛选条件
@@ -641,13 +437,25 @@ export default {
         filters[key] = ''
       })
       searchQuery.value = ''
-      // TODO: 重置搜索结果
+      currentPage.value = 1
+      loadTrainings()
     }
 
     // 查看培训详情
-    const viewTrainingDetail = (training) => {
+    const viewTrainingDetail = async (training) => {
       selectedTraining.value = training
       dialogVisible.value = true
+
+      if (training?.id) {
+        try {
+          const res = await request.get('/course/detail', { params: { courseId: training.id } })
+          if (res.data) {
+            selectedTraining.value = mapCourseToTraining(res.data)
+          }
+        } catch (error) {
+          // ignore detail fetch errors
+        }
+      }
     }
 
     // 报名培训
@@ -674,9 +482,22 @@ export default {
     }
 
     // 添加收藏
-    const addFavorite = (training) => {
-      // TODO: 调用API添加收藏
-      ElMessage.success(`已收藏培训：${training.title}`)
+    const addFavorite = async (training) => {
+      const userId = Number(getUserIdForPath('/personal') || 0)
+      if (!userId) {
+        ElMessage.warning('请先登录')
+        return
+      }
+      try {
+        await request({
+          url: '/course/collect',
+          method: 'post',
+          params: { userId, courseId: training.id }
+        })
+        ElMessage.success(`已收藏培训：${training.title}`)
+      } catch (error) {
+        ElMessage.error('收藏失败，请重试')
+      }
     }
 
     // 获取类别颜色
@@ -700,22 +521,90 @@ export default {
 
     // 重置选中的培训
     const resetSelectedTraining = () => {
-      selectedTraining.value = {}
+      selectedTraining.value = null
     }
 
     // 分页处理
     const handleSizeChange = (size) => {
       pageSize.value = size
+      currentPage.value = 1
+      loadTrainings()
     }
 
     const handleCurrentChange = (current) => {
       currentPage.value = current
+      loadTrainings()
+    }
+
+    const formatDuration = (minutes) => {
+      if (!minutes && minutes !== 0) return '未知'
+      if (minutes < 60) return `${minutes} 分钟`
+      if (minutes < 24 * 60) return `${Math.round(minutes / 60)} 小时`
+      if (minutes < 7 * 24 * 60) return `${Math.round(minutes / (24 * 60))} 天`
+      return `${Math.round(minutes / (7 * 24 * 60))} 周`
+    }
+
+    const mapCourseToTraining = (course) => {
+      const isHot = (course.collectCount || 0) >= 10 || (course.viewCount || 0) >= 100
+      const price = course.price ? Number(course.price) : 0
+      return {
+        id: course.id,
+        title: course.title,
+        description: course.description || '',
+        category: course.courseType || course.suitableJobType || '培训课程',
+        format: course.url ? '线上培训' : '线下培训',
+        level: course.suitableLevel || '',
+        duration: formatDuration(course.duration),
+        startDate: course.createTime || '',
+        price,
+        originalPrice: null,
+        discount: null,
+        certification: course.suitableLevel || '',
+        isHot,
+        enrollmentCount: course.collectCount || course.viewCount || 0,
+        rating: 4.5,
+        image: course.coverImage || '',
+        externalUrl: course.url || '',
+        trainer: {
+          name: course.provider || '培训机构',
+          title: '课程提供方',
+          avatar: '',
+          bio: ''
+        },
+        modules: [],
+        benefits: [],
+        targetAudience: course.suitableJobType || '',
+        location: course.url ? '线上' : '线下'
+      }
+    }
+
+    const loadTrainings = async () => {
+      try {
+        const res = await request.get('/course/list', {
+          params: {
+            page: currentPage.value,
+            size: pageSize.value,
+            keyword: searchQuery.value || undefined,
+            courseType: filters.category || undefined,
+            suitableLevel: filters.level || undefined
+          }
+        })
+        const pageInfo = res.data || {}
+        const records = pageInfo.records || []
+        trainings.value = records.map(item => mapCourseToTraining(item))
+        totalTrainings.value = pageInfo.total || trainings.value.length
+      } catch (error) {
+        trainings.value = []
+        totalTrainings.value = 0
+        ElMessage.error('课程加载失败，请稍后重试')
+      }
     }
 
     return {
       searchQuery,
       filters,
       trainings,
+      totalTrainings,
       currentPage,
       pageSize,
       dialogVisible,
@@ -738,6 +627,15 @@ export default {
 <style scoped>
 .training-container {
   padding: 20px;
+}
+
+.button-icon {
+  margin-right: 0;
+  font-size: 1em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
 }
 
 .page-header {
@@ -766,6 +664,18 @@ export default {
 
 .search-bar .el-input {
   width: 100%;
+}
+
+.search-bar :deep(.el-input-group__append) {
+  padding: 0;
+}
+
+.search-bar :deep(.el-input-group__append .el-button) {
+  margin: 0;
+  min-height: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .filter-section h3 {

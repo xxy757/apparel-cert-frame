@@ -1,7 +1,9 @@
 package com.apparelcert.controller;
 
 import com.apparelcert.common.Result;
+import com.apparelcert.service.CertificationService;
 import com.apparelcert.service.FileUploadService;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -11,12 +13,16 @@ import java.util.Map;
 /**
  * 文件上传控制器
  */
+@Slf4j
 @RestController
 @RequestMapping("/api/upload")
 public class FileUploadController {
 
     @Autowired
     private FileUploadService fileUploadService;
+
+    @Autowired(required = false)
+    private CertificationService certificationService;
 
     /**
      * 通用文件上传
@@ -66,14 +72,30 @@ public class FileUploadController {
 
     /**
      * 上传实操成果文件
+     * 上传成功后自动关联到认证申请记录
      */
     @PostMapping("/practical")
     public Result<Map<String, Object>> uploadPractical(
             @RequestParam("file") MultipartFile file,
             @RequestParam Long certificationId) {
+        // 1. 上传文件
         Map<String, Object> result = fileUploadService.uploadPracticalFile(file, certificationId);
         Boolean success = (Boolean) result.get("success");
+
         if (success != null && success) {
+            // 2. 文件上传成功，更新认证记录
+            if (certificationService != null) {
+                String fileUrl = (String) result.get("url");
+                boolean updated = certificationService.uploadPractical(certificationId, fileUrl);
+                if (updated) {
+                    log.info("实操作品上传成功并已关联认证记录: certificationId={}, fileUrl={}", certificationId, fileUrl);
+                    result.put("certificationUpdated", true);
+                } else {
+                    log.warn("实操作品上传成功但更新认证记录失败: certificationId={}", certificationId);
+                    result.put("certificationUpdated", false);
+                    result.put("warning", "文件上传成功，但关联认证记录失败，请联系管理员");
+                }
+            }
             return Result.success(result);
         } else {
             return Result.error(400, (String) result.get("message"));

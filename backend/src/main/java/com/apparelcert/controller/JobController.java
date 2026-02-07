@@ -9,7 +9,10 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 求职服务控制器
@@ -54,9 +57,46 @@ public class JobController {
      * 获取推荐岗位
      */
     @GetMapping("/recommended")
-    public Result<List<Job>> getRecommendedJobs(@RequestParam Long userId) {
-        List<Job> jobs = jobService.getRecommendedJobs(userId);
-        return Result.success(jobs);
+    public Result<List<Map<String, Object>>> getRecommendedJobs(@RequestParam Long userId) {
+        Map<String, Object> smartResult = jobService.getSmartRecommendedJobs(userId, 1, 10);
+        Object recordsObj = smartResult.get("records");
+
+        List<Map<String, Object>> recommendedList = new ArrayList<>();
+        if (recordsObj instanceof List) {
+            List<?> records = (List<?>) recordsObj;
+            for (Object recordObj : records) {
+                if (!(recordObj instanceof Map)) {
+                    continue;
+                }
+
+                @SuppressWarnings("unchecked")
+                Map<String, Object> record = (Map<String, Object>) recordObj;
+                Object jobObj = record.get("job");
+                if (!(jobObj instanceof Job)) {
+                    continue;
+                }
+
+                Job job = (Job) jobObj;
+                Map<String, Object> item = new HashMap<>();
+                item.put("id", job.getId());
+                item.put("title", job.getTitle());
+                item.put("type", job.getType());
+                item.put("companyName", job.getCompanyName());
+                item.put("companyLogo", job.getCompanyLogo());
+                item.put("salary", job.getSalary());
+                item.put("location", job.getLocation());
+                item.put("description", job.getDescription());
+                item.put("requirements", job.getRequirements());
+                item.put("benefits", job.getBenefits());
+                item.put("education", job.getEducation());
+                item.put("experience", job.getExperience());
+                item.put("matchScore", record.get("matchScore"));
+                item.put("matchReasons", record.get("matchReasons"));
+                recommendedList.add(item);
+            }
+        }
+
+        return Result.success(recommendedList);
     }
     
     /**

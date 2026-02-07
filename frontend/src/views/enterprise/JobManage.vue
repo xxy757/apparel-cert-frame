@@ -67,10 +67,14 @@
         <el-table-column prop="jobType" label="岗位类型" width="100"></el-table-column>
         <el-table-column prop="salaryMin" label="薪资范围" width="120">
           <template #default="scope">
-            <span class="salary-text">{{ scope.row.salaryMin }}K - {{ scope.row.salaryMax }}K</span>
+            <span class="salary-text">{{ getSalaryDisplay(scope.row) }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="workLocation" label="工作地点" width="100"></el-table-column>
+        <el-table-column prop="workLocation" label="工作地点" width="100">
+          <template #default="scope">
+            <span>{{ scope.row.workLocation || scope.row.location || '-' }}</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="status" label="状态" width="100">
           <template #default="scope">
             <el-tag :type="getStatusTagType(scope.row.status)" effect="light">
@@ -80,12 +84,12 @@
         </el-table-column>
         <el-table-column prop="viewCount" label="浏览" width="70">
           <template #default="scope">
-            <span class="stat-num">{{ scope.row.viewCount }}</span>
+            <span class="stat-num">{{ scope.row.viewCount ?? scope.row.views ?? 0 }}</span>
           </template>
         </el-table-column>
         <el-table-column prop="applyCount" label="投递" width="70">
           <template #default="scope">
-            <span class="stat-num highlight">{{ scope.row.applyCount }}</span>
+            <span class="stat-num highlight">{{ scope.row.applyCount ?? scope.row.applications ?? 0 }}</span>
           </template>
         </el-table-column>
         <el-table-column prop="createTime" label="发布时间" width="150"></el-table-column>
@@ -228,18 +232,18 @@
           </div>
         </div>
         <div class="detail-meta">
-          <span class="meta-item salary">{{ selectedJob.salaryMin }}K - {{ selectedJob.salaryMax }}K</span>
-          <span class="meta-item">{{ selectedJob.workType }}</span>
-          <span class="meta-item">{{ selectedJob.workLocation }}</span>
-          <span class="meta-item">招{{ selectedJob.recruitNum }}人</span>
+          <span class="meta-item salary">{{ getSalaryDisplay(selectedJob) }}</span>
+          <span class="meta-item">{{ selectedJob.workType || '-' }}</span>
+          <span class="meta-item">{{ selectedJob.workLocation || selectedJob.location || '-' }}</span>
+          <span class="meta-item">招{{ selectedJob.recruitNum || '-' }}人</span>
         </div>
         <div class="detail-stats">
           <div class="stat-item">
-            <span class="stat-value">{{ selectedJob.viewCount }}</span>
+            <span class="stat-value">{{ selectedJob.viewCount ?? selectedJob.views ?? 0 }}</span>
             <span class="stat-label">浏览量</span>
           </div>
           <div class="stat-item">
-            <span class="stat-value">{{ selectedJob.applyCount }}</span>
+            <span class="stat-value">{{ selectedJob.applyCount ?? selectedJob.applications ?? 0 }}</span>
             <span class="stat-label">投递数</span>
           </div>
           <div class="stat-item">
@@ -350,6 +354,69 @@ export default {
     const pageSize = ref(10)
     const totalJobs = ref(0)
 
+    const parseSalaryRange = (salary) => {
+      if (!salary) return { min: null, max: null }
+      const match = salary.replace(/[kK]/g, '').match(/(\d+)(?:\s*-\s*(\d+))?/)
+      if (!match) return { min: null, max: null }
+      const rawMin = parseInt(match[1], 10)
+      const rawMax = parseInt(match[2] || match[1], 10)
+      const toK = (value) => (value >= 1000 ? Math.round(value / 1000) : value)
+      return { min: toK(rawMin), max: toK(rawMax) }
+    }
+
+    const getSalaryDisplay = (job) => {
+      if (!job) return '-'
+      const min = job.salaryMin ?? null
+      const max = job.salaryMax ?? null
+      if (min !== null || max !== null) {
+        const minVal = min ?? 0
+        const maxVal = max ?? minVal
+        return `${minVal}K - ${maxVal}K`
+      }
+      return job.salary || '-'
+    }
+
+    const normalizeJobItem = (job) => {
+      if (!job) return job
+      const range = parseSalaryRange(job.salary)
+      return {
+        ...job,
+        jobType: job.jobType || job.type,
+        workLocation: job.workLocation || job.location,
+        salaryMin: job.salaryMin ?? range.min,
+        salaryMax: job.salaryMax ?? range.max,
+        viewCount: job.viewCount ?? job.views,
+        applyCount: job.applyCount ?? job.applications,
+        skills: Array.isArray(job.skills) ? job.skills : (job.skills ? job.skills.split(',') : [])
+      }
+    }
+
+    const buildJobPayload = () => {
+      const salaryMin = Number(jobForm.salaryMin) || 0
+      const salaryMax = Number(jobForm.salaryMax) || 0
+      const salary =
+        salaryMin || salaryMax
+          ? `${salaryMin * 1000}-${salaryMax * 1000}`
+          : ''
+
+      return {
+        id: jobForm.id,
+        title: jobForm.title,
+        type: jobForm.jobType,
+        workType: jobForm.workType,
+        salaryMin,
+        salaryMax,
+        salary,
+        location: jobForm.workLocation,
+        recruitNum: jobForm.recruitNum,
+        skills: jobForm.skills?.length ? jobForm.skills.join(',') : '',
+        description: jobForm.description,
+        requirements: jobForm.requirements,
+        benefits: jobForm.benefits,
+        isUrgent: jobForm.isUrgent ? 1 : 0
+      }
+    }
+
     // 加载职位数据
     const loadJobs = async () => {
       if (!enterpriseId.value) {
@@ -367,8 +434,9 @@ export default {
         )
 
         if (response.data) {
-          jobs.value = response.data.records || response.data.list || []
-          totalJobs.value = response.data.total || 0
+          const rawJobs = response.data.records || response.data.list || []
+          jobs.value = rawJobs.map(j => normalizeJobItem(j))
+          totalJobs.value = response.data.total || jobs.value.length
         }
       } catch (error) {
         console.error('加载职位失败:', error)
@@ -446,11 +514,12 @@ export default {
       if (!valid) return
 
       try {
+        const payload = buildJobPayload()
         let result
         if (isEditing.value) {
           // 更新职位
           result = await updateJob({
-            ...jobForm,
+            ...payload,
             enterpriseId: enterpriseId.value
           })
           if (result.code === 200) {
@@ -459,7 +528,7 @@ export default {
         } else {
           // 发布新职位
           result = await publishJob({
-            ...jobForm,
+            ...payload,
             enterpriseId: enterpriseId.value,
             status: 1, // 招聘中
             views: 0,
@@ -491,26 +560,27 @@ export default {
     }
     
     const viewJobDetails = (job) => {
-      selectedJob.value = job
+      selectedJob.value = normalizeJobItem(job)
       jobDetailDialogVisible.value = true
     }
     
     const editJob = (job) => {
+      const normalizedJob = normalizeJobItem(job)
       isEditing.value = true
       Object.assign(jobForm, {
-        id: job.id,
-        title: job.title,
-        jobType: job.jobType,
-        workType: job.workType,
-        salaryMin: job.salaryMin,
-        salaryMax: job.salaryMax,
-        workLocation: job.workLocation,
-        recruitNum: job.recruitNum,
-        skills: job.skills || [],
-        description: job.description,
-        requirements: job.requirements,
-        benefits: job.benefits,
-        isUrgent: job.isUrgent || false
+        id: normalizedJob.id,
+        title: normalizedJob.title,
+        jobType: normalizedJob.jobType,
+        workType: normalizedJob.workType,
+        salaryMin: normalizedJob.salaryMin || 0,
+        salaryMax: normalizedJob.salaryMax || 0,
+        workLocation: normalizedJob.workLocation,
+        recruitNum: normalizedJob.recruitNum || 1,
+        skills: normalizedJob.skills || [],
+        description: normalizedJob.description,
+        requirements: normalizedJob.requirements,
+        benefits: normalizedJob.benefits,
+        isUrgent: !!normalizedJob.isUrgent
       })
       jobDetailDialogVisible.value = false
       createJobDialogVisible.value = true
@@ -681,6 +751,7 @@ export default {
       totalJobs,
       getStatusText,
       getStatusTagType,
+      getSalaryDisplay,
       openCreateJobDialog,
       submitJobForm,
       searchJobs,

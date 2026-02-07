@@ -87,3 +87,83 @@ export function getCertificateShareLink(certificateId) {
         params: { certificateId }
     })
 }
+
+/**
+ * 上传实操作品文件
+ * @param {File} file - 文件对象
+ * @param {number} certificationId - 认证申请ID
+ * @param {function} onProgress - 上传进度回调
+ * @returns {Promise}
+ */
+export function uploadPracticalWork(file, certificationId, onProgress) {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('certificationId', certificationId)
+
+    return request({
+        url: '/upload/practical',
+        method: 'post',
+        data: formData,
+        headers: {
+            'Content-Type': 'multipart/form-data'
+        },
+        onUploadProgress: (progressEvent) => {
+            if (onProgress && progressEvent.total) {
+                const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total)
+                onProgress(percentCompleted)
+            }
+        }
+    })
+}
+
+/**
+ * 获取认证申请详情
+ * @param {number} id - 认证申请ID
+ * @returns {Promise}
+ */
+export function getApplicationDetail(id) {
+    return request({
+        url: '/personal/certification/detail',
+        method: 'get',
+        params: { id }
+    })
+}
+
+/**
+ * 删除已上传的文件
+ * @param {string} fileUrl - 文件URL
+ * @returns {Promise}
+ */
+export function deleteFile(fileUrl) {
+    return request({
+        url: '/upload',
+        method: 'delete',
+        params: { fileUrl }
+    })
+}
+
+/**
+ * 导出证书
+ * @param {number} certificateId - 证书ID
+ * @returns {Promise}
+ */
+export function exportCertificateFile(certificateId) {
+    return request({
+        url: '/admin/certification/certificate/export',
+        method: 'get',
+        params: { certificateId }
+    })
+}
+
+/**
+ * 验证证书
+ * @param {string} certificateNumber - 证书编号
+ * @returns {Promise}
+ */
+export function verifyCertificateNumber(certificateNumber) {
+    return request({
+        url: '/admin/certification/certificate/verify',
+        method: 'get',
+        params: { certificateNumber }
+    })
+}

@@ -164,6 +164,7 @@ import {
   Search
 } from '@element-plus/icons-vue'
 import request from '@/utils/request'
+import { getUserIdForPath } from '@/utils/auth'
 
 // 默认Logo
 const defaultLogo = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiBmaWxsPSIjZjBmMGYwIi8+PHRleHQgeD0iMzIiIHk9IjM4IiBmb250LXNpemU9IjI0IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSIjY2NjIj7kvIE8L3RleHQ+PC9zdmc+'
@@ -227,8 +228,67 @@ const showDetail = (app) => {
   showDetailDrawer.value = true
 }
 
-const viewInterview = (app) => {
-  ElMessage.info('面试详情功能开发中')
+const getInterviewStatusText = (status) => {
+  const statusMap = {
+    0: '待确认',
+    1: '已确认',
+    2: '已完成',
+    3: '已取消'
+  }
+  return statusMap[status] || '未知'
+}
+
+const formatDateTime = (value) => {
+  if (!value) return '-'
+  const date = new Date(String(value).replace(' ', 'T'))
+  if (Number.isNaN(date.getTime())) return '-'
+  return date.toLocaleString('zh-CN', { hour12: false })
+}
+
+const viewInterview = async (app) => {
+  try {
+    const userId = Number(getUserIdForPath('/personal') || 0)
+    if (!userId) {
+      ElMessage.warning('请先登录')
+      return
+    }
+
+    const response = await request.get('/interview/user', {
+      params: { userId, page: 1, size: 100 }
+    })
+    const records = response.data?.records || response.data?.list || []
+
+    const matched = records
+      .filter((item) =>
+        String(item.deliveryId || '') === String(app.id || '') ||
+        String(item.jobId || '') === String(app.jobId || '')
+      )
+      .sort((a, b) => new Date(b.interviewTime || 0) - new Date(a.interviewTime || 0))
+
+    if (matched.length === 0) {
+      ElMessage.info('该申请暂无面试记录')
+      return
+    }
+
+    const latest = matched[0]
+    const detailText = [
+      `面试ID：${latest.id || '-'}`,
+      `职位：${app.jobTitle || '-'}`,
+      `时间：${formatDateTime(latest.interviewTime)}`,
+      `地点：${latest.interviewLocation || '-'}`,
+      `形式：${latest.interviewType || '-'}`,
+      `面试官：${latest.interviewer || '-'}`,
+      `状态：${getInterviewStatusText(latest.status)}`,
+      `备注：${latest.remark || '-'}`
+    ].join('\n')
+
+    ElMessageBox.alert(detailText, '面试详情', {
+      confirmButtonText: '确定'
+    })
+  } catch (error) {
+    console.error('获取面试详情失败:', error)
+    ElMessage.error('获取面试详情失败，请稍后重试')
+  }
 }
 
 const withdrawApplication = (app) => {
@@ -244,14 +304,14 @@ const withdrawApplication = (app) => {
 const loadApplications = async () => {
   try {
     const response = await request.get('/personal/job/applications', {
-      params: { userId: Number(localStorage.getItem('userId') || 0) }
+      params: { userId: Number(getUserIdForPath('/personal') || 0) }
     })
     const statusMap = {
       0: 'PENDING',
       1: 'VIEWED',
       2: 'INTERVIEW',
-      3: 'ACCEPTED',
-      4: 'REJECTED'
+      3: 'REJECTED',
+      4: 'ACCEPTED'
     }
     const rawApplications = response.data || []
     const jobDetailList = await Promise.all(
@@ -285,13 +345,14 @@ const loadApplications = async () => {
     stats[2].value = applications.value.filter(app => app.status === 'INTERVIEW').length
     stats[3].value = applications.value.filter(app => app.status === 'ACCEPTED').length
   } catch (error) {
-    applications.value = [
-      { id: 1, jobTitle: '高级服装设计师', companyName: '上海时尚服饰有限公司', companyLogo: null, salary: '15K-25K', location: '上海市', applyTime: '2024-01-15T10:30:00', status: 'INTERVIEW', statusTime: '2024-01-18', timeline: [{ time: '2024-01-15 10:30', content: '成功投递简历', type: 'primary' }, { time: '2024-01-16 14:20', content: 'HR已查看您的简历', type: 'success' }, { time: '2024-01-18 09:00', content: '收到面试邀请', type: 'warning' }] },
-      { id: 2, jobTitle: '服装版型师', companyName: '杭州丝绸集团', companyLogo: null, salary: '12K-18K', location: '杭州市', applyTime: '2024-01-10T14:00:00', status: 'VIEWED', statusTime: '2024-01-12', timeline: [{ time: '2024-01-10 14:00', content: '成功投递简历', type: 'primary' }, { time: '2024-01-12 11:30', content: 'HR已查看您的简历', type: 'success' }] },
-      { id: 3, jobTitle: '时装买手', companyName: '北京潮流服饰', companyLogo: null, salary: '10K-15K', location: '北京市', applyTime: '2024-01-08T09:15:00', status: 'ACCEPTED', statusTime: '2024-01-20', timeline: [{ time: '2024-01-08 09:15', content: '成功投递简历', type: 'primary' }, { time: '2024-01-09 10:00', content: 'HR已查看您的简历', type: 'success' }, { time: '2024-01-12 14:00', content: '通过初筛，进入面试', type: 'warning' }, { time: '2024-01-20 16:00', content: '恭喜！您已通过面试', type: 'success' }] }
-    ]
-    total.value = 3
-    stats[0].value = 3; stats[1].value = 1; stats[2].value = 1; stats[3].value = 1
+    console.error('加载申请记录失败:', error)
+    applications.value = []
+    total.value = 0
+    stats[0].value = 0
+    stats[1].value = 0
+    stats[2].value = 0
+    stats[3].value = 0
+    ElMessage.error('加载申请记录失败，请稍后重试')
   }
 }
 

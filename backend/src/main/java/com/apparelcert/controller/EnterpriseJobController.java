@@ -25,9 +25,8 @@ public class EnterpriseJobController {
      */
     @PostMapping
     public Result<Boolean> publishJob(@RequestBody Job job) {
+        normalizeJob(job, true);
         job.setStatus(1); // 1: 招聘中
-        job.setViews(0);
-        job.setApplications(0);
         boolean result = jobService.save(job);
         return Result.success(result);
     }
@@ -59,8 +58,27 @@ public class EnterpriseJobController {
      */
     @PutMapping
     public Result<Boolean> updateJob(@RequestBody Job job) {
+        normalizeJob(job, false);
         boolean result = jobService.updateById(job);
         return Result.success(result);
+    }
+
+    private void normalizeJob(Job job, boolean isNew) {
+        if (job == null) return;
+        if (isNew) {
+            if (job.getViews() == null) job.setViews(0);
+            if (job.getApplications() == null) job.setApplications(0);
+        }
+
+        if (job.getSalary() == null || job.getSalary().trim().isEmpty()) {
+            Integer min = job.getSalaryMin();
+            Integer max = job.getSalaryMax();
+            if (min != null || max != null) {
+                int minVal = min != null ? min : 0;
+                int maxVal = max != null ? max : minVal;
+                job.setSalary((minVal * 1000) + "-" + (maxVal * 1000));
+            }
+        }
     }
 
     /**

@@ -24,7 +24,7 @@
               >
                 <el-button type="primary" size="small">上传头像</el-button>
               </el-upload>
-              <el-button size="small" @click="selectRandomDefaultAvatar" style="margin-top: 5px;">随机头像</el-button>
+              <el-button class="avatar-random-btn" size="small" @click="selectRandomDefaultAvatar">随机头像</el-button>
             </div>
           </div>
           
@@ -37,9 +37,9 @@
                 :key="index"
                 :size="60"
                 :src="avatar"
+                class="default-avatar-option"
                 :class="{ 'selected': userInfo.avatar === avatar }"
                 @click="selectDefaultAvatar(index)"
-                style="cursor: pointer; margin: 0 5px; border: 2px solid transparent;"
               />
             </div>
           </div>
@@ -140,6 +140,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Edit } from '@element-plus/icons-vue'
 import request from '@/utils/request'
 import emitter from '@/utils/eventBus'
+import { getTokenForPath } from '@/utils/auth'
 
 export default {
   name: 'PersonalProfile',
@@ -207,7 +208,7 @@ export default {
     // 上传头像相关
     const uploadUrl = `${import.meta.env.VITE_APP_API_BASE_URL || '/api'}/upload/avatar`
     const uploadHeaders = {
-      'Authorization': `Bearer ${localStorage.getItem('token')}`
+      'Authorization': `Bearer ${getTokenForPath('/personal')}`
     }
 
     // 检查是否有更改
@@ -405,6 +406,10 @@ export default {
   gap: 5px;
 }
 
+.avatar-random-btn {
+  margin-top: 5px;
+}
+
 .avatar-input {
   display: flex;
   align-items: center;
@@ -433,6 +438,11 @@ export default {
   flex-wrap: wrap;
   gap: 10px;
   margin-top: 10px;
+}
+
+.default-avatar-option {
+  cursor: pointer;
+  border: 2px solid transparent;
 }
 
 .default-avatars h4 {

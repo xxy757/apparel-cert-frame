@@ -32,7 +32,7 @@ public class UserEnterpriseServiceImpl extends ServiceImpl<UserEnterpriseMapper,
         if (enterprise != null) {
             enterprise.setBusinessLicense(businessLicense);
             // TODO: 保存其他认证文件
-            enterprise.setAuthStatus(1); // 1: 待审核
+            enterprise.setAuthStatus(0); // 0: 待审核
             return this.updateById(enterprise);
         }
         return false;

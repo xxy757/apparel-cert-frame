@@ -152,6 +152,7 @@ import { ref, reactive, onMounted, onBeforeUnmount, watch, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import request from '../utils/request'
+import { saveSession, userTypeFromLoginType, resolveUserType } from '../utils/auth'
 
 export default {
   name: 'Login',
@@ -293,10 +294,12 @@ export default {
             loginAttempts[type] = 0
             lockTime[type] = null
 
-            localStorage.setItem('token', response.data.token)
-            localStorage.setItem('userType', response.data.userType || (type === 'personal' ? '1' : type === 'enterprise' ? '2' : '3'))
-            localStorage.setItem('userId', response.data.userId || '')
-            localStorage.setItem('username', form.username)
+            const targetUserType = resolveUserType(response.data.userType) || userTypeFromLoginType(type)
+            saveSession(targetUserType, {
+              token: response.data.token,
+              userId: response.data.userId || '',
+              username: form.username
+            })
 
             ElMessage.success('登录成功')
 
@@ -345,11 +348,6 @@ export default {
         // 强制清空密码字段
         adminForm.password = ''
       }
-    }
-
-    const forgetPassword = () => {
-      // TODO: 实现忘记密码功能
-      ElMessage.info('忘记密码功能开发中')
     }
 
     // 清除所有登录表单数据的函数
@@ -442,7 +440,6 @@ export default {
       rules,
       login,
       resetForm,
-      forgetPassword,
       // 登录失败次数限制相关
       maxAttempts,
       loginAttempts,

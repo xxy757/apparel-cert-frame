@@ -23,7 +23,7 @@
             </el-dropdown-menu>
           </template>
         </el-dropdown>
-        <el-button type="primary" @click="showScheduleDialog = true">
+        <el-button type="primary" @click="openScheduleDialog">
           <el-icon><Plus /></el-icon>
           安排面试
         </el-button>
@@ -75,9 +75,9 @@
 
     <!-- 列表视图 -->
     <div class="interview-list" v-if="viewMode === 'list'">
-      <el-empty v-if="interviews.length === 0" description="暂无面试安排" />
+      <el-empty v-if="displayInterviews.length === 0" description="暂无面试安排" />
 
-      <div class="interview-card" v-for="interview in interviews" :key="interview.id" :class="{ 'interview-card-selected': selectedInterviews.some(i => i.id === interview.id) }">
+      <div class="interview-card" v-for="interview in displayInterviews" :key="interview.id" :class="{ 'interview-card-selected': selectedInterviews.some(i => i.id === interview.id) }">
         <div class="interview-select">
           <el-checkbox 
             :model-value="selectedInterviews.some(i => i.id === interview.id)"
@@ -184,7 +184,50 @@
     </div>
 
 
-    
+    <!-- 安排/改期面试对话框 -->
+    <el-dialog v-model="showScheduleDialog" :title="scheduleMode === 'reschedule' ? '改期面试' : '安排面试'" width="620px" @close="resetScheduleDialog">
+      <el-form ref="scheduleFormRef" :model="scheduleForm" :rules="scheduleRules" label-width="100px">
+        <el-form-item label="候选人">
+          <el-input v-model="scheduleForm.candidateName" readonly />
+        </el-form-item>
+        <el-form-item label="职位">
+          <el-input v-model="scheduleForm.positionName" readonly />
+        </el-form-item>
+        <el-form-item label="面试时间" prop="interviewTime">
+          <el-date-picker
+            v-model="scheduleForm.interviewTime"
+            type="datetime"
+            placeholder="请选择面试时间"
+            style="width: 100%"
+          />
+        </el-form-item>
+        <el-form-item label="面试地点" prop="interviewLocation">
+          <el-input v-model="scheduleForm.interviewLocation" placeholder="请输入面试地点" />
+        </el-form-item>
+        <el-form-item label="面试形式" prop="interviewType">
+          <el-select v-model="scheduleForm.interviewType" placeholder="请选择面试形式" style="width: 100%">
+            <el-option label="现场面试" value="现场面试" />
+            <el-option label="视频面试" value="视频面试" />
+            <el-option label="电话面试" value="电话面试" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="面试官" prop="interviewer">
+          <el-input v-model="scheduleForm.interviewer" placeholder="请输入面试官姓名" />
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input v-model="scheduleForm.remark" type="textarea" :rows="3" placeholder="请输入备注" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="showScheduleDialog = false">取消</el-button>
+          <el-button type="primary" :loading="scheduleSubmitting" @click="submitSchedule">
+            {{ scheduleMode === 'reschedule' ? '确认改期' : '确认安排' }}
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
+
     <!-- 面试详情对话框 -->
     <el-dialog v-model="detailDialogVisible" title="面试详情" width="600px">
       <div v-if="selectedInterview" class="interview-detail">
@@ -270,11 +313,23 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, List, Calendar, Location, User, VideoCamera, View, Check, EditPen, MoreFilled, Clock, CircleCheck, Warning, Close, Download, Document } from '@element-plus/icons-vue'
+import { Plus, List, Calendar, Location, User, VideoCamera, View, Check, EditPen, MoreFilled, Clock, CircleCheck, Download, Document } from '@element-plus/icons-vue'
 import request from '../../utils/request'
+import {
+  getCurrentUser,
+  getEnterpriseJobs,
+  getEnterpriseInterviews,
+  updateInterviewStatus,
+  updateInterviewResult,
+  getInterviewStatistics,
+  createInterview,
+  getInterviewDetail
+} from '@/api/enterprise'
 
+const router = useRouter()
 const detailDialogVisible = ref(false)
 const resultDialogVisible = ref(false)
 const showScheduleDialog = ref(false)
@@ -286,30 +341,75 @@ const exportLoading = ref(false)
 
 const searchForm = reactive({ position: '', candidateName: '', status: '' })
 const resultForm = reactive({ interviewId: '', candidateName: '', result: '', feedback: '' })
+const scheduleFormRef = ref(null)
+const scheduleSubmitting = ref(false)
+const scheduleMode = ref('reschedule')
+const scheduleForm = reactive({
+  interviewId: null,
+  deliveryId: null,
+  userId: null,
+  jobId: null,
+  candidateName: '',
+  positionName: '',
+  interviewTime: '',
+  interviewLocation: '',
+  interviewType: '',
+  interviewer: '',
+  remark: ''
+})
 
 const resultRules = {
   result: [{ required: true, message: '请选择面试结果', trigger: 'change' }],
   feedback: [{ required: true, message: '请输入面试反馈', trigger: 'blur' }, { min: 10, message: '面试反馈不能少于10个字符', trigger: 'blur' }]
 }
 
-const jobs = ref([{ id: 1, title: '服装设计师' }, { id: 2, title: '服装打版师' }, { id: 3, title: '时装买手' }])
+const scheduleRules = {
+  interviewTime: [{ required: true, message: '请选择面试时间', trigger: 'change' }],
+  interviewLocation: [{ required: true, message: '请输入面试地点', trigger: 'blur' }],
+  interviewType: [{ required: true, message: '请选择面试形式', trigger: 'change' }],
+  interviewer: [{ required: true, message: '请输入面试官姓名', trigger: 'blur' }]
+}
 
-const interviews = ref([
-  { id: 1, positionName: '服装设计师', candidateName: '张三', interviewTime: '2024-01-25 14:00:00', interviewLocation: '公司会议室A', interviewType: '现场面试', interviewer: '李经理', status: 0, result: null, remark: '请提前准备作品集', feedback: '' },
-  { id: 2, positionName: '服装打版师', candidateName: '李四', interviewTime: '2024-01-26 10:00:00', interviewLocation: '腾讯会议', interviewType: '视频面试', interviewer: '王主管', status: 1, result: null, remark: '面试链接将通过邮件发送', feedback: '' },
-  { id: 3, positionName: '时装买手', candidateName: '王五', interviewTime: '2024-01-27 15:30:00', interviewLocation: '公司3楼面试间', interviewType: '现场面试', interviewer: '赵总监', status: 2, result: 1, remark: '', feedback: '专业能力强，沟通能力佳' }
-])
+const enterpriseId = ref(null)
+const jobs = ref([])
+
+const interviews = ref([])
 
 const interviewStats = reactive([
-  { key: 'pending', label: '待确认', value: 1, icon: Clock, color: 'linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%)' },
-  { key: 'confirmed', label: '已确认', value: 1, icon: CircleCheck, color: 'linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)' },
-  { key: 'completed', label: '已完成', value: 1, icon: Check, color: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' },
-  { key: 'total', label: '本月面试', value: 3, icon: Calendar, color: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' }
+  { key: 'pending', label: '待确认', value: 0, icon: Clock, color: 'linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%)' },
+  { key: 'confirmed', label: '已确认', value: 0, icon: CircleCheck, color: 'linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)' },
+  { key: 'completed', label: '已完成', value: 0, icon: Check, color: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' },
+  { key: 'total', label: '本月面试', value: 0, icon: Calendar, color: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)' }
 ])
 
 const currentPage = ref(1)
 const pageSize = ref(10)
-const totalInterviews = computed(() => interviews.value.length)
+const totalInterviews = ref(0)
+
+const displayInterviews = computed(() => {
+  let list = interviews.value
+  if (searchForm.position) {
+    list = list.filter(i => String(i.jobId || i.positionId || '') === String(searchForm.position))
+  }
+  if (searchForm.candidateName) {
+    const keyword = searchForm.candidateName.trim()
+    if (keyword) {
+      list = list.filter(i => (i.candidateName || '').includes(keyword))
+    }
+  }
+  if (searchForm.status !== '' && searchForm.status !== null && searchForm.status !== undefined) {
+    list = list.filter(i => String(i.status) === String(searchForm.status))
+  }
+  return list
+})
+
+const jobMap = computed(() => {
+  const map = new Map()
+  jobs.value.forEach(job => {
+    map.set(job.id, job)
+  })
+  return map
+})
 
 const getStatusText = (status) => {
   const statusMap = { 0: '待确认', 1: '已确认', 2: '已完成', 3: '已取消' }
@@ -334,28 +434,158 @@ const formatTimeOnly = (dateStr) => {
 }
 
 const getCalendarEvents = (day) => {
-  return interviews.value.filter(i => i.interviewTime.startsWith(day))
+  return displayInterviews.value.filter(i => i.interviewTime && String(i.interviewTime).startsWith(day))
 }
 
-const searchInterviews = () => { console.log('搜索面试:', searchForm) }
-const resetSearch = () => { searchForm.position = ''; searchForm.candidateName = ''; searchForm.status = '' }
+const searchInterviews = () => {
+  currentPage.value = 1
+  loadInterviews()
+}
+const resetSearch = () => {
+  searchForm.position = ''
+  searchForm.candidateName = ''
+  searchForm.status = ''
+  currentPage.value = 1
+  loadInterviews()
+}
 
-const viewInterviewDetails = (interview) => {
+const parseDateValue = (value) => {
+  if (!value) return ''
+  const date = new Date(typeof value === 'string' ? value.replace(' ', 'T') : value)
+  return Number.isNaN(date.getTime()) ? '' : date
+}
+
+const resetScheduleDialog = () => {
+  if (scheduleFormRef.value) {
+    scheduleFormRef.value.clearValidate()
+  }
+  Object.assign(scheduleForm, {
+    interviewId: null,
+    deliveryId: null,
+    userId: null,
+    jobId: null,
+    candidateName: '',
+    positionName: '',
+    interviewTime: '',
+    interviewLocation: '',
+    interviewType: '',
+    interviewer: '',
+    remark: ''
+  })
+  scheduleSubmitting.value = false
+}
+
+const fillScheduleForm = (interview, mode = 'reschedule') => {
+  scheduleMode.value = mode
+  scheduleForm.interviewId = interview?.id || null
+  scheduleForm.deliveryId = interview?.deliveryId || null
+  scheduleForm.userId = interview?.userId || null
+  scheduleForm.jobId = interview?.jobId || null
+  scheduleForm.candidateName = interview?.candidateName || ''
+  scheduleForm.positionName = interview?.positionName || ''
+  scheduleForm.interviewTime = parseDateValue(interview?.interviewTime)
+  scheduleForm.interviewLocation = interview?.interviewLocation || ''
+  scheduleForm.interviewType = interview?.interviewType || ''
+  scheduleForm.interviewer = interview?.interviewer || ''
+  scheduleForm.remark = interview?.remark || ''
+}
+
+const openScheduleDialog = () => {
+  if (selectedInterviews.value.length === 1) {
+    fillScheduleForm(selectedInterviews.value[0], 'reschedule')
+    showScheduleDialog.value = true
+    return
+  }
+
+  if (selectedInterviews.value.length > 1) {
+    ElMessage.warning('请仅选择一条面试记录进行改期')
+    return
+  }
+
+  ElMessage.info('新增面试请前往“简历管理”页面发送面试邀请')
+  router.push('/enterprise/resume')
+}
+
+const submitSchedule = async () => {
+  const valid = await scheduleFormRef.value?.validate().catch(() => false)
+  if (!valid) return
+
+  if (!enterpriseId.value) {
+    ElMessage.error('企业信息未初始化，请重新登录')
+    return
+  }
+
+  scheduleSubmitting.value = true
+  try {
+    if (scheduleMode.value === 'reschedule' && scheduleForm.interviewId) {
+      await updateInterviewStatus(scheduleForm.interviewId, 3)
+    }
+
+    await createInterview({
+      deliveryId: scheduleForm.deliveryId || undefined,
+      userId: scheduleForm.userId || undefined,
+      enterpriseId: enterpriseId.value,
+      jobId: scheduleForm.jobId || undefined,
+      interviewTime: scheduleForm.interviewTime,
+      interviewLocation: scheduleForm.interviewLocation,
+      interviewType: scheduleForm.interviewType,
+      interviewer: scheduleForm.interviewer,
+      remark: scheduleForm.remark
+    })
+
+    ElMessage.success(scheduleMode.value === 'reschedule' ? '面试改期成功' : '面试安排成功')
+    showScheduleDialog.value = false
+    await loadInterviews()
+    await loadStats()
+  } catch (error) {
+    console.error('安排/改期面试失败:', error)
+    ElMessage.error('操作失败，请稍后重试')
+  } finally {
+    scheduleSubmitting.value = false
+  }
+}
+
+const viewInterviewDetails = async (interview) => {
   selectedInterview.value = interview
   detailDialogVisible.value = true
+  if (!interview?.id) return
+
+  try {
+    const response = await getInterviewDetail(interview.id)
+    const detailInterview = response.data?.interview
+    if (detailInterview) {
+      selectedInterview.value = normalizeInterview(detailInterview)
+    }
+  } catch (error) {
+    console.error('获取面试详情失败:', error)
+  }
 }
 
 const confirmInterview = (interview) => {
-  ElMessageBox.confirm('确认接受此面试安排？', '确认面试', { type: 'info' }).then(() => {
-    interview.status = 1
-    ElMessage.success('面试已确认')
+  ElMessageBox.confirm('确认接受此面试安排？', '确认面试', { type: 'info' }).then(async () => {
+    try {
+      await updateInterviewStatus(interview.id, 1)
+      ElMessage.success('面试已确认')
+      await loadInterviews()
+      await loadStats()
+    } catch (error) {
+      console.error('确认面试失败:', error)
+      ElMessage.error('确认面试失败')
+    }
   }).catch(() => {})
 }
 
 const cancelInterview = (interview) => {
-  ElMessageBox.confirm('确定取消此次面试吗？', '取消面试', { type: 'warning' }).then(() => {
-    interview.status = 3
-    ElMessage.success('面试已取消')
+  ElMessageBox.confirm('确定取消此次面试吗？', '取消面试', { type: 'warning' }).then(async () => {
+    try {
+      await updateInterviewStatus(interview.id, 3)
+      ElMessage.success('面试已取消')
+      await loadInterviews()
+      await loadStats()
+    } catch (error) {
+      console.error('取消面试失败:', error)
+      ElMessage.error('取消面试失败')
+    }
   }).catch(() => {})
 }
 
@@ -366,18 +596,25 @@ const recordResult = (interview) => {
 }
 
 const saveResult = () => {
-  const interview = interviews.value.find(i => i.id.toString() === resultForm.interviewId)
-  if (interview) {
-    interview.result = parseInt(resultForm.result)
-    interview.feedback = resultForm.feedback
-  }
   resultDialogVisible.value = false
-  ElMessage.success('面试结果已保存')
+  updateInterviewResult(resultForm.interviewId, parseInt(resultForm.result, 10), resultForm.feedback)
+    .then(async () => {
+      ElMessage.success('面试结果已保存')
+      await loadInterviews()
+      await loadStats()
+    })
+    .catch((error) => {
+      console.error('保存面试结果失败:', error)
+      ElMessage.error('保存面试结果失败')
+    })
 }
 
 const handleCommand = (command, interview) => {
   if (command === 'cancel') cancelInterview(interview)
-  else if (command === 'reschedule') ElMessage.info('改期功能开发中')
+  else if (command === 'reschedule') {
+    fillScheduleForm(interview, 'reschedule')
+    showScheduleDialog.value = true
+  }
 }
 
 // 批量选择相关
@@ -417,6 +654,103 @@ const batchExportResumes = async (format = 'excel') => {
     exportLoading.value = false
   }
 }
+
+const normalizeInterview = (item) => {
+  const job = jobMap.value.get(item.jobId)
+  const positionName = item.positionName || job?.title || '未知职位'
+  const candidateName = item.candidateName || item.userName || item.username || (item.userId ? `用户#${item.userId}` : '候选人')
+  return {
+    ...item,
+    positionName,
+    candidateName
+  }
+}
+
+const loadJobs = async () => {
+  if (!enterpriseId.value) return
+  try {
+    const response = await getEnterpriseJobs(1, 200, enterpriseId.value)
+    jobs.value = response.data?.records || response.data?.list || []
+  } catch (error) {
+    console.error('加载职位列表失败:', error)
+  }
+}
+
+const loadInterviews = async () => {
+  if (!enterpriseId.value) return
+  try {
+    const response = await getEnterpriseInterviews(
+      currentPage.value,
+      pageSize.value,
+      enterpriseId.value,
+      searchForm.status || undefined
+    )
+    const records = response.data?.records || response.data?.list || []
+    interviews.value = records.map(item => normalizeInterview(item))
+    totalInterviews.value = response.data?.total || interviews.value.length
+    selectedInterviews.value = selectedInterviews.value.filter(sel => interviews.value.some(i => i.id === sel.id))
+  } catch (error) {
+    console.error('加载面试数据失败:', error)
+    ElMessage.error('加载面试数据失败')
+  }
+}
+
+const setStatValue = (key, value) => {
+  const target = interviewStats.find(item => item.key === key)
+  if (target) target.value = value
+}
+
+const loadStats = async () => {
+  if (!enterpriseId.value) return
+  try {
+    const response = await getInterviewStatistics(enterpriseId.value)
+    const stats = response.data || {}
+    setStatValue('pending', stats.pendingCount ?? 0)
+    setStatValue('completed', stats.completedCount ?? 0)
+    setStatValue('total', stats.monthCount ?? 0)
+    if (stats.confirmedCount != null) {
+      setStatValue('confirmed', stats.confirmedCount)
+    } else {
+      const confirmed = interviews.value.filter(i => i.status === 1).length
+      setStatValue('confirmed', confirmed)
+    }
+  } catch (error) {
+    console.error('加载面试统计失败:', error)
+  }
+}
+
+const initEnterprise = async () => {
+  try {
+    const response = await getCurrentUser()
+    if (response.data?.enterpriseId) {
+      enterpriseId.value = response.data.enterpriseId
+      await loadJobs()
+      await loadInterviews()
+      await loadStats()
+    } else {
+      ElMessage.error('无法获取企业信息，请重新登录')
+    }
+  } catch (error) {
+    console.error('获取企业信息失败:', error)
+    ElMessage.error('获取企业信息失败')
+  }
+}
+
+onMounted(() => {
+  initEnterprise()
+})
+
+watch([currentPage, pageSize], () => {
+  loadInterviews()
+})
+
+watch(
+  () => searchForm.status,
+  () => {
+    currentPage.value = 1
+    loadInterviews()
+  }
+)
 </script>
 
 <style scoped>

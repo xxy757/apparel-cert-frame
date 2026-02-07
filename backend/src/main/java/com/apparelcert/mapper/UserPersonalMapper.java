@@ -27,5 +27,13 @@ public interface UserPersonalMapper extends BaseMapper<UserPersonal> {
      */
     @Select("SELECT * FROM user_personal WHERE email = #{email} AND status = 1")
     UserPersonal findByEmail(@Param("email") String email);
+
+    /**
+     * 根据手机号查询用户
+     * @param phone 手机号
+     * @return 用户信息
+     */
+    @Select("SELECT * FROM user_personal WHERE phone = #{phone} AND status = 1")
+    UserPersonal findByPhone(@Param("phone") String phone);
 }
 

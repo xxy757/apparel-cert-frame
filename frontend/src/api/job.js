@@ -39,6 +39,19 @@ export function getJobDetail(jobId) {
 }
 
 /**
+ * 获取当前用户投递记录
+ * @param {number} userId - 用户ID
+ * @returns {Promise}
+ */
+export function getUserApplications(userId) {
+  return request({
+    url: '/personal/job/applications',
+    method: 'get',
+    params: { userId }
+  })
+}
+
+/**
  * 申请单个职位
  * @param {object} data - { jobId, resumeId }
  * @returns {Promise}

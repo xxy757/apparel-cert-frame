@@ -53,6 +53,9 @@ apparelcert:
   upload:
     path: /uploads/
   domain: http://localhost:8080
+  reset-pwd:
+    devMode: false
+    allowCidrs: 127.0.0.1/32,192.168.0.0/16,10.0.0.0/8,::1/128
 
 springdoc:
   swagger-ui:
@@ -61,3 +64,8 @@ springdoc:
   api-docs:
     path: /v3/api-docs
     enabled: true
+
+file:
+  upload:
+    path: ${user.home}/apparel-cert/uploads
+    base-url: /uploads

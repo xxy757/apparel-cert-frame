@@ -5,7 +5,9 @@
       "Bash(unzip:*)",
       "Bash(curl:*)",
       "Bash(powershell:*)",
-      "Bash(cmd:*)"
+      "Bash(cmd:*)",
+      "Bash(wc:*)",
+      "Bash(find:*)"
     ]
   }
 }

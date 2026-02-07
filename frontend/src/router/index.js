@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { getUserTypeByPath, hasSession, syncSessionForPath } from '../utils/auth'
 
 const routes = [
   {
@@ -25,6 +26,7 @@ const routes = [
     path: '/personal',
     name: 'PersonalCenter',
     component: () => import('../views/personal/Index.vue'),
+    redirect: '/personal/profile',
     children: [
       {
         path: 'resume',
@@ -72,6 +74,7 @@ const routes = [
     path: '/enterprise',
     name: 'EnterpriseCenter',
     component: () => import('../views/enterprise/Index.vue'),
+    redirect: '/enterprise/auth',
     children: [
       {
         path: 'auth',
@@ -104,6 +107,7 @@ const routes = [
     path: '/admin',
     name: 'AdminCenter',
     component: () => import('../views/admin/Index.vue'),
+    redirect: '/admin/dashboard',
     children: [
       {
         path: 'dashboard',
@@ -126,6 +130,10 @@ const routes = [
         component: () => import('../views/admin/CertificationManage.vue')
       }
     ]
+  },
+  {
+    path: '/:pathMatch(.*)*',
+    redirect: '/'
   }
 ]
 
@@ -134,38 +142,39 @@ const router = createRouter({
   routes
 })
 
+// 路由动态加载失败兜底，避免页面进入不可用状态
+router.onError((error) => {
+  const message = String(error?.message || '')
+  if (message.includes('Failed to fetch dynamically imported module') ||
+      message.includes('Importing a module script failed')) {
+    window.location.reload()
+  }
+})
+
 // 路由守卫 - 简单的身份验证
 router.beforeEach((to, from, next) => {
-  const token = localStorage.getItem('token')
-  const userType = localStorage.getItem('userType')
-
   // 不需要登录的公开路由
   const publicRoutes = ['/login', '/register', '/forgot-password', '/']
 
   if (publicRoutes.includes(to.path)) {
+    syncSessionForPath(to.path)
     // 公开路由直接通过
     return next()
   }
 
-  // 需要登录的路由
-  if (!token) {
-    // 没有token，跳转到登录页
+  // 仅对三类用户中心做登录态检查
+  const requiredUserType = getUserTypeByPath(to.path)
+  if (!requiredUserType) {
+    syncSessionForPath(to.path)
+    return next()
+  }
+
+  if (!hasSession(requiredUserType)) {
     return next('/login')
   }
 
-  // 有token，检查是否访问了正确的用户中心
-  // userType: 1=个人用户, 2=企业用户, 3=管理员
-  if (to.path.startsWith('/personal') && userType !== '1') {
-    return next('/login')
-  }
-  if (to.path.startsWith('/enterprise') && userType !== '2') {
-    return next('/login')
-  }
-  if (to.path.startsWith('/admin') && userType !== '3') {
-    return next('/login')
-  }
-
-  // 允许访问
+  // 进入不同用户中心时，自动切换到对应账号会话
+  syncSessionForPath(to.path)
   return next()
 })
 

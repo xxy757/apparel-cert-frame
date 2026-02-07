@@ -81,6 +81,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ArrowDown, User, SwitchButton } from '@element-plus/icons-vue'
+import { clearSession, getActiveUserType, getSession } from '@/utils/auth'
 
 export default {
   name: 'AdminCenter',
@@ -103,7 +104,7 @@ export default {
       activeMenu.value = route.path
       
       // 从localStorage获取管理员信息
-      const username = localStorage.getItem('username')
+      const username = getSession('3').username
       if (username) {
         admin.username = username
       }
@@ -111,26 +112,29 @@ export default {
     
     const handleCommand = (command) => {
       if (command === 'profile') {
-        // 管理员个人信息，可以跳转到用户管理页面
-        ElMessage.info('管理员信息页面开发中')
+        router.push('/admin/user')
       } else if (command === 'logout') {
         logout()
       }
     }
     
     const logout = () => {
-      // 清除本地存储
-      localStorage.removeItem('token')
-      localStorage.removeItem('userType')
-      localStorage.removeItem('userId')
-      localStorage.removeItem('username')
+      // 仅退出管理员账号，不影响其他账号类型
+      clearSession('3')
       localStorage.removeItem('savedPassword')
       localStorage.removeItem('savedUsername')
       
       sessionStorage.clear()
       
       ElMessage.success('退出登录成功')
-      router.push('/login')
+      const nextType = getActiveUserType()
+      if (nextType === '1') {
+        router.push('/personal/resume')
+      } else if (nextType === '2') {
+        router.push('/enterprise/job')
+      } else {
+        router.push('/login')
+      }
     }
     
     return {
@@ -147,11 +151,14 @@ export default {
 .admin-container {
   display: flex;
   min-height: 100vh;
+  height: 100vh;
   background-color: #f5f7fa;
+  overflow: hidden;
 }
 
 .admin-sidebar {
   width: 260px;
+  flex-shrink: 0;
   background-color: #304156;
   color: #bfcbd9;
   display: flex;
@@ -159,6 +166,7 @@ export default {
   position: sticky;
   top: 0;
   height: 100vh;
+  overflow-y: auto;
 }
 
 .admin-info {
@@ -195,8 +203,11 @@ export default {
 
 .admin-main {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
 }
 
 .top-header {
@@ -208,6 +219,10 @@ export default {
   justify-content: space-between;
   padding: 0 20px;
   box-shadow: 0 1px 4px rgba(0, 21, 41, 0.08);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  flex-shrink: 0;
 }
 
 .header-left {
@@ -246,6 +261,7 @@ export default {
 
 .admin-content {
   flex: 1;
+  min-height: 0;
   padding: 20px;
   overflow-y: auto;
 }

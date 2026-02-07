@@ -442,7 +442,7 @@
     <!-- 主页预览对话框 -->
     <el-dialog v-model="previewVisible" title="企业主页预览" width="900px" fullscreen>
       <div class="homepage-preview">
-        <div class="preview-banner" :style="{ backgroundImage: `url(${homepageForm.banner || 'https://via.placeholder.com/1200x400'})` }">
+        <div class="preview-banner" :style="{ backgroundImage: homepageForm.banner ? `url(${homepageForm.banner})` : '' }">
           <div class="preview-company-info">
             <el-avatar :size="100" :src="homepageForm.logo" shape="square">
               <el-icon :size="40"><OfficeBuilding /></el-icon>
@@ -490,56 +490,67 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, nextTick } from 'vue'
+import { ref, reactive, computed, nextTick, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { View, OfficeBuilding, Upload, Plus, Check, List, Rank } from '@element-plus/icons-vue'
+import request from '@/utils/request'
+import {
+  getEnterpriseInfo,
+  updateEnterpriseInfo,
+  submitEnterpriseAuth,
+  getCurrentUser
+} from '@/api/enterprise'
 
 const activeTab = ref('certification')
 
 // 认证信息
 const authInfo = reactive({
-  status: 1, // 0: 待审核, 1: 通过, 2: 拒绝
-  submitTime: '2023-11-15T10:30:00',
-  auditTime: '2023-11-18T14:00:00',
+  status: 0, // 0: 待审核, 1: 通过, 2: 拒绝
+  submitTime: '',
+  auditTime: '',
   rejectReason: null
 })
 
+const enterpriseId = ref(null)
+
 // 认证表单数据
 const authForm = reactive({
-  companyName: '时尚服饰有限公司',
-  creditCode: '91110000XXXXXXXXX',
-  companyType: 'limited',
-  companySize: 'medium',
-  industry: 'apparel',
-  establishDate: '2015-03-10',
-  contactName: '张三',
-  contactPosition: '人力资源经理',
-  contactPhone: '13800138000',
-  contactEmail: 'hr@example.com',
-  region: ['北京市', '北京市', '朝阳区'],
-  address: '建国路88号现代城A座18层'
+  companyName: '',
+  creditCode: '',
+  companyType: '',
+  companySize: '',
+  industry: '',
+  establishDate: '',
+  contactName: '',
+  contactPosition: '',
+  contactPhone: '',
+  contactEmail: '',
+  region: [],
+  address: '',
+  businessLicense: ''
 })
 
 // 企业主页表单
 const homepageForm = reactive({
   logo: '',
   banner: '',
-  slogan: '创造时尚，引领潮流',
-  introduction: '时尚服饰有限公司成立于2015年，是一家专注于高端女装设计与生产的服装企业。公司拥有专业的设计团队和先进的生产设备，致力于为消费者提供高品质、时尚前沿的服装产品。\n\n经过多年发展，公司已成为国内知名的服装品牌，产品远销海内外，深受消费者喜爱。',
-  vision: '成为中国最具影响力的时尚服装品牌',
-  mission: '用设计创造美好生活，让每个人都能享受时尚',
-  values: ['创新', '品质', '诚信', '共赢'],
-  benefits: ['五险一金', '带薪年假', '年终奖金', '员工培训', '节日福利'],
+  slogan: '',
+  introduction: '',
+  vision: '',
+  mission: '',
+  values: [],
+  benefits: [],
   otherBenefits: '',
   gallery: [],
-  website: 'www.fashion.com',
-  hrEmail: 'hr@fashion.com',
-  hrPhone: '400-888-8888',
-  wechat: '时尚服饰官方'
+  website: '',
+  hrEmail: '',
+  hrPhone: '',
+  wechat: ''
 })
 
 // 文件列表
 const fileList = ref([])
+const loading = ref(false)
 
 // 表单引用
 const authFormRef = ref(null)
@@ -600,25 +611,70 @@ const getIndustryText = (industry) => ({ apparel: '服装纺织', ecommerce: '�
 const formatDate = (date) => date ? new Date(date).toLocaleDateString() : ''
 
 // 文件处理
-const handleFileChange = (file) => { console.log('文件变化:', file) }
+const handleFileChange = async (file) => {
+  const url = await uploadCompanyFile(file.raw)
+  if (url) {
+    authForm.businessLicense = url
+    fileList.value = [{ name: file.name || '营业执照', url }]
+    ElMessage.success('营业执照已上传')
+  }
+}
 const handleExceed = () => { ElMessage.warning('最多只能上传一个文件') }
-const handleLogoChange = (file) => {
-  homepageForm.logo = URL.createObjectURL(file.raw)
-  ElMessage.success('LOGO已更新')
+const handleLogoChange = async (file) => {
+  const url = await uploadCompanyFile(file.raw)
+  if (url) {
+    homepageForm.logo = url
+    ElMessage.success('LOGO已更新')
+  }
 }
-const handleBannerChange = (file) => {
-  homepageForm.banner = URL.createObjectURL(file.raw)
-  ElMessage.success('封面图已更新')
+const handleBannerChange = async (file) => {
+  const url = await uploadCompanyFile(file.raw)
+  if (url) {
+    homepageForm.banner = url
+    ElMessage.success('封面图已更新')
+  }
 }
-const handleGalleryChange = (file, fileList) => {
-  if (fileList.length > 9) {
+const handleGalleryChange = async (file, fileListRef) => {
+  if (fileListRef.length > 9) {
     ElMessage.warning('最多上传9张图片')
     return
   }
-  homepageForm.gallery = fileList
+
+  if (file?.raw) {
+    const url = await uploadCompanyFile(file.raw)
+    if (url) {
+      file.url = url
+      file.status = 'success'
+    }
+  }
+
+  homepageForm.gallery = (fileListRef || [])
+    .map(item => ({ name: item.name, url: item.url }))
+    .filter(item => item.url)
 }
-const handleGalleryRemove = (file, fileList) => {
-  homepageForm.gallery = fileList
+const handleGalleryRemove = (file, fileListRef) => {
+  homepageForm.gallery = (fileListRef || [])
+    .map(item => ({ name: item.name, url: item.url }))
+    .filter(item => item.url)
+}
+
+const uploadCompanyFile = async (rawFile) => {
+  if (!rawFile) return ''
+  try {
+    const formData = new FormData()
+    formData.append('file', rawFile)
+    const res = await request({
+      url: '/upload/company',
+      method: 'post',
+      data: formData,
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+    return res?.data?.url || ''
+  } catch (error) {
+    console.error('上传失败:', error)
+    ElMessage.error('上传失败，请重试')
+    return ''
+  }
 }
 
 // 价值观编辑
@@ -651,8 +707,7 @@ const submitAuth = () => {
       ElMessageBox.confirm('确定要提交认证申请吗？', '提交确认', {
         confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning'
       }).then(() => {
-        authInfo.status = 0
-        ElMessage.success('认证申请已提交')
+        submitEnterpriseAuthForm()
       }).catch(() => {})
     }
   })
@@ -661,7 +716,20 @@ const resetForm = () => { authFormRef.value?.resetFields() }
 
 // 主页操作
 const previewHomepage = () => { previewVisible.value = true }
-const saveHomepage = () => { ElMessage.success('企业主页信息已保存') }
+const saveHomepage = async () => {
+  if (!enterpriseId.value) return
+  loading.value = true
+  try {
+    const payload = buildEnterprisePayload()
+    await updateEnterpriseInfo(payload)
+    ElMessage.success('企业主页信息已保存')
+  } catch (error) {
+    console.error('保存主页失败:', error)
+    ElMessage.error('保存失败，请重试')
+  } finally {
+    loading.value = false
+  }
+}
 const resetHomepage = () => {
   ElMessageBox.confirm('确定要重置主页信息吗？', '确认重置', {
     confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning'
@@ -675,6 +743,154 @@ const resetHomepage = () => {
     ElMessage.success('已重置')
   }).catch(() => {})
 }
+
+const parseExtraInfo = (description) => {
+  if (!description) return { auth: {}, homepage: {} }
+  try {
+    const parsed = JSON.parse(description)
+    if (parsed && typeof parsed === 'object') {
+      return {
+        auth: parsed.auth || {},
+        homepage: parsed.homepage || {}
+      }
+    }
+  } catch (e) {
+    // 非JSON时，作为简介处理
+  }
+  return { auth: {}, homepage: { introduction: description } }
+}
+
+const buildExtraInfo = () => {
+  const galleryUrls = (homepageForm.gallery || []).map(item => item.url).filter(Boolean)
+  return {
+    auth: {
+      creditCode: authForm.creditCode,
+      companySize: authForm.companySize,
+      industry: authForm.industry,
+      establishDate: authForm.establishDate,
+      contactPosition: authForm.contactPosition,
+      region: authForm.region
+    },
+    homepage: {
+      banner: homepageForm.banner,
+      slogan: homepageForm.slogan,
+      introduction: homepageForm.introduction,
+      vision: homepageForm.vision,
+      mission: homepageForm.mission,
+      values: homepageForm.values,
+      benefits: homepageForm.benefits,
+      otherBenefits: homepageForm.otherBenefits,
+      gallery: galleryUrls,
+      website: homepageForm.website,
+      hrEmail: homepageForm.hrEmail,
+      hrPhone: homepageForm.hrPhone,
+      wechat: homepageForm.wechat
+    }
+  }
+}
+
+const applyEnterpriseInfo = (enterprise) => {
+  if (!enterprise) return
+  const extra = parseExtraInfo(enterprise.description)
+
+  authInfo.status = enterprise.authStatus ?? authInfo.status
+  authInfo.submitTime = enterprise.updateTime || enterprise.createTime || ''
+  authInfo.auditTime = enterprise.updateTime || ''
+
+  authForm.companyName = enterprise.companyName || ''
+  authForm.companyType = enterprise.companyType || ''
+  authForm.contactName = enterprise.contactPerson || ''
+  authForm.contactPhone = enterprise.contactPhone || ''
+  authForm.contactEmail = enterprise.email || ''
+  authForm.address = enterprise.address || ''
+  authForm.businessLicense = enterprise.businessLicense || ''
+
+  authForm.creditCode = extra.auth.creditCode || ''
+  authForm.companySize = extra.auth.companySize || ''
+  authForm.industry = extra.auth.industry || ''
+  authForm.establishDate = extra.auth.establishDate || ''
+  authForm.contactPosition = extra.auth.contactPosition || ''
+  authForm.region = extra.auth.region || []
+
+  homepageForm.logo = enterprise.logo || ''
+  homepageForm.banner = extra.homepage.banner || ''
+  homepageForm.slogan = extra.homepage.slogan || homepageForm.slogan
+  homepageForm.introduction = extra.homepage.introduction || enterprise.description || ''
+  homepageForm.vision = extra.homepage.vision || homepageForm.vision
+  homepageForm.mission = extra.homepage.mission || homepageForm.mission
+  homepageForm.values = extra.homepage.values || []
+  homepageForm.benefits = extra.homepage.benefits || []
+  homepageForm.otherBenefits = extra.homepage.otherBenefits || ''
+  homepageForm.website = extra.homepage.website || homepageForm.website
+  homepageForm.hrEmail = extra.homepage.hrEmail || homepageForm.hrEmail
+  homepageForm.hrPhone = extra.homepage.hrPhone || homepageForm.hrPhone
+  homepageForm.wechat = extra.homepage.wechat || homepageForm.wechat
+
+  const galleryUrls = extra.homepage.gallery || []
+  homepageForm.gallery = galleryUrls.map((url, index) => ({
+    name: `图片${index + 1}`,
+    url
+  }))
+
+  if (authForm.businessLicense) {
+    fileList.value = [{ name: '营业执照', url: authForm.businessLicense }]
+  }
+}
+
+const buildEnterprisePayload = () => {
+  return {
+    id: enterpriseId.value,
+    companyName: authForm.companyName,
+    companyType: authForm.companyType,
+    contactPerson: authForm.contactName,
+    contactPhone: authForm.contactPhone,
+    email: authForm.contactEmail,
+    businessLicense: authForm.businessLicense,
+    address: authForm.address,
+    description: JSON.stringify(buildExtraInfo()),
+    logo: homepageForm.logo
+  }
+}
+
+const submitEnterpriseAuthForm = async () => {
+  if (!enterpriseId.value) return
+  loading.value = true
+  try {
+    const payload = buildEnterprisePayload()
+    await updateEnterpriseInfo(payload)
+    await submitEnterpriseAuth(enterpriseId.value, authForm.businessLicense || '', '')
+    authInfo.status = 0
+    ElMessage.success('认证申请已提交')
+  } catch (error) {
+    console.error('提交认证失败:', error)
+    ElMessage.error('提交失败，请重试')
+  } finally {
+    loading.value = false
+  }
+}
+
+const loadEnterprise = async () => {
+  loading.value = true
+  try {
+    const current = await getCurrentUser()
+    if (!current?.data?.userId || current?.data?.userType !== 2) {
+      ElMessage.error('请使用企业账号登录')
+      return
+    }
+    enterpriseId.value = current.data.userId
+    const enterpriseRes = await getEnterpriseInfo(enterpriseId.value)
+    applyEnterpriseInfo(enterpriseRes.data || {})
+  } catch (error) {
+    console.error('加载企业信息失败:', error)
+    ElMessage.error('加载企业信息失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(() => {
+  loadEnterprise()
+})
 </script>
 
 <style scoped>

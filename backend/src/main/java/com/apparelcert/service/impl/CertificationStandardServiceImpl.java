@@ -29,13 +29,13 @@ public class CertificationStandardServiceImpl extends ServiceImpl<CertificationS
             wrapper.like("name", keyword).or().like("description", keyword);
         }
         if (type != null && !type.isEmpty()) {
-            wrapper.eq("type", type);
+            wrapper.eq("job_type", type);
         }
         if (level != null) {
             wrapper.eq("level", level);
         }
         
-        wrapper.orderByAsc("type");
+        wrapper.orderByAsc("job_type");
         wrapper.orderByAsc("level");
         return standardMapper.selectPage(pageInfo, wrapper);
     }
@@ -64,7 +64,7 @@ public class CertificationStandardServiceImpl extends ServiceImpl<CertificationS
     @Override
     public List<CertificationStandard> getByType(String type) {
         QueryWrapper<CertificationStandard> wrapper = new QueryWrapper<>();
-        wrapper.eq("type", type);
+        wrapper.eq("job_type", type);
         wrapper.orderByAsc("level");
         return standardMapper.selectList(wrapper);
     }
@@ -72,7 +72,7 @@ public class CertificationStandardServiceImpl extends ServiceImpl<CertificationS
     @Override
     public CertificationStandard getByTypeAndLevel(String type, Integer level) {
         QueryWrapper<CertificationStandard> wrapper = new QueryWrapper<>();
-        wrapper.eq("type", type);
+        wrapper.eq("job_type", type);
         wrapper.eq("level", level);
         return standardMapper.selectOne(wrapper);
     }

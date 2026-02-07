@@ -1,6 +1,7 @@
 package com.apparelcert.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
@@ -27,4 +28,7 @@ public class PracticalTask extends BaseEntity {
     private Integer maxScore;
     private String requiredTools;
     private String exampleUrl;
+
+    @TableField(exist = false)
+    private Integer status;
 }

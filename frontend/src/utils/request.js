@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
+import { clearSession, clearSessionByPath, getActiveUserType, getTokenForPath, getUserTypeByPath, syncSessionForPath } from './auth'
 
 // 创建 axios 实例
 const request = axios.create({
@@ -10,12 +11,45 @@ const request = axios.create({
   }
 })
 
+const getCurrentPath = () => {
+  if (typeof window !== 'undefined' && window.location) {
+    return window.location.pathname || '/'
+  }
+  return '/'
+}
+
+const handleUnauthorized = (requestUrl = '') => {
+  const currentPath = getCurrentPath()
+  const isLoginRequest = String(requestUrl).includes('/auth/login')
+  if (isLoginRequest || currentPath.includes('/login')) {
+    return
+  }
+
+  const routeType = getUserTypeByPath(currentPath)
+  if (routeType) {
+    clearSession(routeType)
+  } else {
+    const activeType = getActiveUserType()
+    if (activeType) {
+      clearSession(activeType)
+    } else {
+      clearSessionByPath(currentPath)
+    }
+  }
+
+  if (!currentPath.includes('/login') && typeof window !== 'undefined') {
+    window.location.href = '/login'
+  }
+}
+
 // 请求拦截器
 request.interceptors.request.use(
   config => {
-    // 从 localStorage 获取 token
-    const token = localStorage.getItem('token')
+    const currentPath = getCurrentPath()
+    syncSessionForPath(currentPath)
+    const token = getTokenForPath(currentPath)
     if (token) {
+      config.headers = config.headers || {}
       config.headers['Authorization'] = `Bearer ${token}`
     }
     return config
@@ -37,12 +71,7 @@ request.interceptors.response.use(
       
       // 401: Token 过期或无效
       if (res.code === 401) {
-        localStorage.removeItem('token')
-        localStorage.removeItem('userType')
-        // 不要在登录页面重定向
-        if (!window.location.pathname.includes('/login')) {
-          window.location.href = '/login'
-        }
+        handleUnauthorized(response.config?.url || '')
       }
       
       return Promise.reject(new Error(res.message || '请求失败'))
@@ -68,11 +97,7 @@ request.interceptors.response.use(
           break
         case 401:
           ElMessage.error(message || '认证失败')
-          localStorage.removeItem('token')
-          localStorage.removeItem('userType')
-          if (!window.location.pathname.includes('/login')) {
-            window.location.href = '/login'
-          }
+          handleUnauthorized(error.config?.url || '')
           break
         case 403:
           ElMessage.error('没有权限访问')
@@ -97,4 +122,3 @@ request.interceptors.response.use(
 )
 
 export default request
-

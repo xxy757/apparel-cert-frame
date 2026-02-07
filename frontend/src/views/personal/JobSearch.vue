@@ -35,6 +35,11 @@
                 <span class="rec-salary">{{ job.salary }}</span>
                 <span class="rec-location">{{ job.location }}</span>
               </div>
+              <div class="rec-application-status" v-if="isJobApplied(job)">
+                <el-tag size="small" :type="getApplicationStatusTagType(getJobApplicationStatus(job))">
+                  {{ getApplicationStatusText(getJobApplicationStatus(job)) }}
+                </el-tag>
+              </div>
               <div class="rec-match-reasons">
                 <el-tag v-for="reason in job.matchReasons" :key="reason" size="small" type="success">
                   {{ reason }}
@@ -57,7 +62,8 @@
         >
           <template #append>
             <el-button type="primary" @click="searchJobs">
-              <i class="el-icon-search"></i> 搜索
+              <el-icon class="button-icon"><Search /></el-icon>
+              搜索
             </el-button>
           </template>
         </el-input>
@@ -188,6 +194,7 @@
             <div class="job-checkbox">
               <el-checkbox 
                 :model-value="isJobSelected(job.id)"
+                :disabled="isJobApplied(job)"
                 @change="toggleJobSelection(job)"
               />
             </div>
@@ -195,6 +202,13 @@
               <div class="job-title-section">
                 <h4>{{ job.title }}</h4>
                 <el-tag size="small" :type="getJobTypeColor(job.type)">{{ job.type }}</el-tag>
+                <el-tag
+                  v-if="isJobApplied(job)"
+                  size="small"
+                  :type="getApplicationStatusTagType(getJobApplicationStatus(job))"
+                >
+                  {{ getApplicationStatusText(getJobApplicationStatus(job)) }}
+                </el-tag>
               </div>
               <div class="company-info">
                 <img :src="job.companyLogo" alt="公司logo" class="company-logo">
@@ -209,15 +223,20 @@
                 <span class="education">{{ job.education }}</span>
               </div>
               <div class="job-description">
-                {{ job.description.substring(0, 150) }}...
+                {{ job.description ? `${job.description.substring(0, 150)}...` : '暂无职位描述' }}
               </div>
               <div class="job-tags">
                 <el-tag size="small" v-for="tag in job.tags" :key="tag">{{ tag }}</el-tag>
               </div>
             </div>
             <div class="job-actions">
-              <el-button type="primary" @click.stop="applyForJob(job)">
-                <i class="el-icon-check"></i> 申请职位
+              <el-button
+                :type="isJobApplied(job) ? 'info' : 'primary'"
+                :disabled="isJobApplied(job)"
+                @click.stop="applyForJob(job)"
+              >
+                <el-icon v-if="!isJobApplied(job)" class="button-icon"><Check /></el-icon>
+                {{ isJobApplied(job) ? getApplicationStatusText(getJobApplicationStatus(job)) : '申请职位' }}
               </el-button>
             </div>
           </div>
@@ -229,11 +248,11 @@
         <el-pagination
           @size-change="handleSizeChange"
           @current-change="handleCurrentChange"
-          :current-page="currentPage"
+          :current-page="pagination.currentPage"
           :page-sizes="[10, 20, 50, 100]"
-          :page-size="pageSize"
+          :page-size="pagination.pageSize"
           layout="total, sizes, prev, pager, next, jumper"
-          :total="jobs.length"
+          :total="totalJobs"
         ></el-pagination>
       </div>
     </div>
@@ -241,7 +260,7 @@
     <!-- 职位详情对话框 -->
     <el-dialog
       v-model="dialogVisible"
-      :title="selectedJob.title"
+      :title="dialogTitle"
       width="800px"
       @close="resetSelectedJob"
     >
@@ -291,8 +310,13 @@
       <template #footer>
         <span class="dialog-footer">
           <el-button @click="dialogVisible = false">关闭</el-button>
-          <el-button type="primary" @click="applyForJob(selectedJob)">
-            <i class="el-icon-check"></i> 申请职位
+          <el-button
+            type="primary"
+            :disabled="selectedJob && isJobApplied(selectedJob)"
+            @click="selectedJob && applyForJob(selectedJob)"
+          >
+            <el-icon v-if="!(selectedJob && isJobApplied(selectedJob))" class="button-icon"><Check /></el-icon>
+            {{ selectedJob && isJobApplied(selectedJob) ? getApplicationStatusText(getJobApplicationStatus(selectedJob)) : '申请职位' }}
           </el-button>
         </span>
       </template>
@@ -405,19 +429,21 @@
 <script>
 import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage } from 'element-plus'
-import { MagicStick, Refresh, Check, Position, Clock, InfoFilled } from '@element-plus/icons-vue'
+import { MagicStick, Refresh, Check, Position, Clock, InfoFilled, Search } from '@element-plus/icons-vue'
 import {
   searchJobs,
   getRecommendedJobs,
   getJobDetail,
+  getUserApplications,
   applyToJob,
   batchApplyToJobs,
   createScheduledDelivery
 } from '../../api/job'
+import { getUserIdForPath } from '@/utils/auth'
 
 export default {
   name: 'JobSearch',
-  components: { MagicStick, Refresh, Check, Position, Clock, InfoFilled },
+  components: { MagicStick, Refresh, Check, Position, Clock, InfoFilled, Search },
   setup() {
     // 加载状态
     const loading = ref(false)
@@ -438,6 +464,7 @@ export default {
     const jobs = ref([])
     const totalJobs = ref(0)
     const recommendedJobs = ref([])
+    const applicationStatusMap = ref({})
 
     // 分页数据
     const pagination = reactive({
@@ -448,6 +475,7 @@ export default {
     // 职位详情对话框
     const dialogVisible = ref(false)
     const selectedJob = ref(null)
+    const dialogTitle = computed(() => selectedJob.value?.title || '职位详情')
 
     // 批量操作
     const selectedJobs = ref([])
@@ -468,6 +496,106 @@ export default {
     }
 
     const resumeUrl = ''
+    const APPLICATION_STATUS_TEXT_MAP = {
+      0: '已申请',
+      1: '已查看',
+      2: '待面试',
+      3: '已拒绝',
+      4: '已通过'
+    }
+    const APPLICATION_STATUS_TAG_MAP = {
+      0: 'warning',
+      1: 'info',
+      2: 'primary',
+      3: 'danger',
+      4: 'success'
+    }
+
+    const getApplicationStatusText = (status) => {
+      if (status === null || status === undefined) return '已申请'
+      return APPLICATION_STATUS_TEXT_MAP[Number(status)] || '已申请'
+    }
+
+    const getApplicationStatusTagType = (status) => {
+      if (status === null || status === undefined) return 'info'
+      return APPLICATION_STATUS_TAG_MAP[Number(status)] || 'info'
+    }
+
+    const applyStatusToJob = (job) => {
+      if (!job || job.id === undefined || job.id === null) return job
+      const status = applicationStatusMap.value[job.id]
+      return {
+        ...job,
+        applicationStatus: status === undefined || status === null ? null : Number(status)
+      }
+    }
+
+    const applyStatusToJobList = (jobList = []) => {
+      return jobList.map(job => applyStatusToJob(job))
+    }
+
+    const getJobApplicationStatus = (job) => {
+      if (!job || job.id === undefined || job.id === null) return null
+
+      const statusInMap = applicationStatusMap.value[job.id]
+      if (statusInMap !== undefined && statusInMap !== null) {
+        return Number(statusInMap)
+      }
+
+      if (job.applicationStatus !== undefined && job.applicationStatus !== null) {
+        return Number(job.applicationStatus)
+      }
+
+      return null
+    }
+
+    const isJobApplied = (job) => {
+      return getJobApplicationStatus(job) !== null
+    }
+
+    const syncSelectionState = () => {
+      const currentJobIds = new Set(jobs.value.map(job => job.id))
+      selectedJobs.value = selectedJobs.value.filter(job => {
+        return currentJobIds.has(job.id) && !isJobApplied(job)
+      })
+
+      const selectableCount = jobs.value.filter(job => !isJobApplied(job)).length
+      selectAll.value = selectableCount > 0 && selectedJobs.value.length === selectableCount
+    }
+
+    const loadApplicationStatuses = async () => {
+      try {
+        const userId = Number(getUserIdForPath('/personal') || 0)
+        if (!userId) {
+          applicationStatusMap.value = {}
+          return
+        }
+
+        const res = await getUserApplications(userId)
+        const applications = Array.isArray(res.data) ? res.data : []
+        const statusByJobId = {}
+
+        applications.forEach(app => {
+          if (app && app.jobId !== undefined && app.jobId !== null && app.status !== undefined && app.status !== null) {
+            statusByJobId[app.jobId] = Number(app.status)
+          }
+        })
+
+        applicationStatusMap.value = statusByJobId
+      } catch (error) {
+        console.error('Failed to load application statuses:', error)
+      }
+    }
+
+    const refreshApplicationStatus = async () => {
+      await loadApplicationStatuses()
+      jobs.value = applyStatusToJobList(jobs.value)
+      recommendedJobs.value = applyStatusToJobList(recommendedJobs.value)
+      if (selectedJob.value) {
+        selectedJob.value = applyStatusToJob(selectedJob.value)
+      }
+      syncSelectionState()
+    }
     
     // --- API 调用 ---
 
@@ -484,8 +612,10 @@ export default {
           salary: filters.salary
         }
         const res = await searchJobs(params)
-        jobs.value = res.data.records || res.data || []
+        const rawJobs = res.data.records || res.data || []
+        jobs.value = applyStatusToJobList(rawJobs)
         totalJobs.value = res.data.total || jobs.value.length || 0
+        syncSelectionState()
       } catch (error) {
         ElMessage.error('职位加载失败')
         console.error("Failed to search jobs:", error)
@@ -498,9 +628,9 @@ export default {
     const loadRecommendations = async () => {
       recommendationLoading.value = true
       try {
-        const userId = Number(localStorage.getItem('userId') || 0)
+        const userId = Number(getUserIdForPath('/personal') || 0)
         const res = await getRecommendedJobs(userId)
-        recommendedJobs.value = res.data || []
+        recommendedJobs.value = applyStatusToJobList(res.data || [])
       } catch (error) {
         // 推荐加载失败不是关键性错误，可以静默处理或轻提示
         console.error("Failed to load recommendations:", error)
@@ -508,10 +638,14 @@ export default {
         recommendationLoading.value = false
       }
     }
-    
-    onMounted(() => {
-      handleSearch()
+
+    const refreshRecommendations = () => {
       loadRecommendations()
+    }
+    
+    onMounted(async () => {
+      await loadApplicationStatuses()
+      await Promise.all([handleSearch(), loadRecommendations()])
     })
     
     const resetFilters = () => {
@@ -523,24 +657,34 @@ export default {
     // 查看职位详情
     const viewJobDetail = async (job) => {
       dialogVisible.value = true
-      selectedJob.value = job // 先用列表数据填充
+      selectedJob.value = applyStatusToJob(job) // 先用列表数据填充
       try {
         // 如果列表数据不完整，可以再获取一次完整的详情
         if (!job.requirements) {
             const res = await getJobDetail(job.id)
-            selectedJob.value = res.data
+            selectedJob.value = applyStatusToJob(res.data)
         }
       } catch (error) {
         ElMessage.error('获取职位详情失败')
       }
     }
 
+    const resetSelectedJob = () => {
+      selectedJob.value = null
+    }
+
     // 申请职位
     const applyForJob = async (job) => {
+      if (isJobApplied(job)) {
+        ElMessage.info(`该职位当前状态：${getApplicationStatusText(getJobApplicationStatus(job))}`)
+        return
+      }
+
       try {
-        const userId = Number(localStorage.getItem('userId') || 0)
+        const userId = Number(getUserIdForPath('/personal') || 0)
         await applyToJob({ jobId: job.id, userId, resumeUrl })
         ElMessage.success(`已成功申请职位：${job.title}`)
+        await refreshApplicationStatus()
         dialogVisible.value = false
       } catch (error) {
         ElMessage.error('申请失败，请稍后重试')
@@ -556,10 +700,17 @@ export default {
     const confirmBatchApply = async () => {
       batchApplying.value = true
       try {
-        const jobIds = selectedJobs.value.map(j => j.id)
-        const userId = Number(localStorage.getItem('userId') || 0)
+        const jobsToApply = selectedJobs.value.filter(job => !isJobApplied(job))
+        const jobIds = jobsToApply.map(j => j.id)
+        if (jobIds.length === 0) {
+          ElMessage.warning('选中的职位都已投递')
+          batchApplying.value = false
+          return
+        }
+        const userId = Number(getUserIdForPath('/personal') || 0)
         await batchApplyToJobs({ jobIds, userId, resumeUrl })
-        ElMessage.success(`成功投递 ${selectedJobs.value.length} 个职位`)
+        ElMessage.success(`成功投递 ${jobIds.length} 个职位`)
+        await refreshApplicationStatus()
         batchApplyDialogVisible.value = false
         clearSelection()
       } catch (error) {
@@ -582,7 +733,7 @@ export default {
         schedulingDelivery.value = true
         try {
           const jobIds = selectedJobs.value.map(j => j.id)
-          const userId = Number(localStorage.getItem('userId') || 0)
+          const userId = Number(getUserIdForPath('/personal') || 0)
           await createScheduledDelivery({
             jobIds,
             userId,
@@ -619,24 +770,36 @@ export default {
     const isJobSelected = (jobId) => selectedJobs.value.some(j => j.id === jobId)
 
     const toggleJobSelection = (job) => {
+      if (isJobApplied(job)) return
+
       const index = selectedJobs.value.findIndex(j => j.id === job.id)
       if (index > -1) {
         selectedJobs.value.splice(index, 1)
       } else {
         selectedJobs.value.push(job)
       }
+
+      const selectableCount = jobs.value.filter(item => !isJobApplied(item)).length
+      selectAll.value = selectableCount > 0 && selectedJobs.value.length === selectableCount
     }
 
     const toggleSelectAll = (val) => {
-      selectedJobs.value = val ? [...jobs.value] : []
+      selectedJobs.value = val ? jobs.value.filter(job => !isJobApplied(job)) : []
     }
 
     const isIndeterminate = computed(() => {
         const selectedCount = selectedJobs.value.length;
-        return selectedCount > 0 && selectedCount < jobs.value.length;
+        const selectableCount = jobs.value.filter(job => !isJobApplied(job)).length;
+        return selectedCount > 0 && selectedCount < selectableCount;
     });
 
     const disabledDate = (time) => time.getTime() < Date.now() - 8.64e7
+    const disabledHours = (date) => {
+      if (!date) return []
+      const now = new Date()
+      if (date.toDateString() !== now.toDateString()) return []
+      return Array.from({ length: now.getHours() }, (_, i) => i)
+    }
 
     const getJobTypeColor = (type) => ({'设计师':'primary','打版师':'success','质检员':'warning','导购':'info','生产管理':'danger'}[type] || 'info')
 
@@ -650,6 +813,7 @@ export default {
       recommendedJobs,
       pagination,
       dialogVisible,
+      dialogTitle,
       selectedJob,
       selectedJobs,
       selectAll,
@@ -676,9 +840,16 @@ export default {
       batchApply,
       confirmBatchApply,
       loadRecommendations,
+      refreshRecommendations,
+      resetSelectedJob,
       openScheduledDeliveryDialog,
       disabledDate,
-      confirmScheduledDelivery
+      disabledHours,
+      confirmScheduledDelivery,
+      isJobApplied,
+      getJobApplicationStatus,
+      getApplicationStatusText,
+      getApplicationStatusTagType
     }
   }
 }
@@ -732,6 +903,15 @@ export default {
 .recommendation-section .section-header h3 .el-icon {
   color: #667eea;
   font-size: 24px;
+}
+
+.button-icon {
+  margin-right: 0;
+  font-size: 1em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
 }
 
 .recommendation-list {
@@ -803,6 +983,10 @@ export default {
   display: flex;
   gap: 15px;
   margin-bottom: 12px;
+}
+
+.rec-application-status {
+  margin-bottom: 10px;
 }
 
 .rec-salary {
@@ -1006,6 +1190,9 @@ export default {
 }
 
 .search-bar .el-button--primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 12px;
   padding: 14px 30px;
   font-size: 16px;
@@ -1013,6 +1200,15 @@ export default {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   border: none;
   transition: all 0.3s ease;
+}
+
+.search-bar :deep(.el-input-group__append) {
+  padding: 0;
+}
+
+.search-bar :deep(.el-input-group__append .el-button) {
+  margin: 0;
+  min-height: 100%;
 }
 
 .search-bar .el-button--primary:hover {
@@ -1643,4 +1839,5 @@ export default {
     height: 80px;
   }
 }
+
 </style>

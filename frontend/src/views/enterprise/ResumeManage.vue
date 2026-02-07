@@ -25,6 +25,7 @@
               <el-option label="已查看" value="1"></el-option>
               <el-option label="面试邀请" value="2"></el-option>
               <el-option label="已拒绝" value="3"></el-option>
+              <el-option label="已通过" value="4"></el-option>
             </el-select>
           </el-form-item>
           <el-form-item label="技能认证">
@@ -56,14 +57,53 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="createTime" label="投递时间" width="180"></el-table-column>
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="投递时间" width="180">
           <template #default="scope">
-            <el-button type="primary" size="small" @click="viewResume(scope.row)">查看简历</el-button>
-            <el-button v-if="scope.row.status === 0" type="warning" size="small" @click="markAsViewed(scope.row)">标记已查看</el-button>
-            <el-button v-if="scope.row.status <= 1" type="success" size="small" @click="sendInterviewInvitation(scope.row)">发送面试邀请</el-button>
-            <el-button v-if="scope.row.status <= 1" type="danger" size="small" @click="rejectResume(scope.row)">拒绝</el-button>
-            <el-button type="info" size="small" @click="viewInterview(scope.row)">面试详情</el-button>
+            <span class="time-text">{{ scope.row.createTimeDisplay }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="320" fixed="right">
+          <template #default="scope">
+            <div class="action-buttons">
+              <el-button class="action-btn" type="primary" size="small" @click="viewResume(scope.row)">查看简历</el-button>
+              <el-button
+                v-if="scope.row.status === 0"
+                class="action-btn"
+                type="warning"
+                size="small"
+                @click="markAsViewed(scope.row)"
+              >
+                标记已查看
+              </el-button>
+              <el-button
+                v-if="scope.row.status <= 1"
+                class="action-btn"
+                type="success"
+                size="small"
+                @click="openInterviewDialog(scope.row)"
+              >
+                发送面试邀请
+              </el-button>
+              <el-button
+                v-if="scope.row.status <= 1"
+                class="action-btn"
+                type="danger"
+                size="small"
+                @click="rejectResume(scope.row)"
+              >
+                拒绝
+              </el-button>
+              <el-button
+                v-if="scope.row.status === 3"
+                class="action-btn"
+                type="warning"
+                size="small"
+                @click="restoreResume(scope.row)"
+              >
+                恢复
+              </el-button>
+              <el-button class="action-btn" type="info" size="small" @click="viewInterview(scope.row)">面试详情</el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -85,60 +125,99 @@
     <el-dialog v-model="resumeDetailDialogVisible" title="简历详情" width="800px">
       <div v-if="selectedResume" class="resume-detail">
         <div class="resume-header">
+          <div class="avatar-section" v-if="selectedResume.avatar">
+            <el-avatar :size="80" :src="selectedResume.avatar"></el-avatar>
+          </div>
           <h3>{{ selectedResume.userName }}</h3>
           <div class="resume-meta">
-            <span class="meta-item">{{ selectedResume.careerDirection }}</span>
-            <span class="meta-item">{{ selectedResume.education }}</span>
-            <span class="meta-item">{{ selectedResume.workExperience }}</span>
+            <span class="meta-item" v-if="selectedResume.careerDirection">{{ selectedResume.careerDirection }}</span>
+            <span class="meta-item" v-if="selectedResume.education">{{ selectedResume.education }}</span>
+            <span class="meta-item" v-if="selectedResume.workExperience">{{ selectedResume.workExperience }}</span>
+            <span class="meta-item" v-if="selectedResume.location">{{ selectedResume.location }}</span>
           </div>
           <div class="contact-info">
-            <span>{{ selectedResume.phone }}</span> | <span>{{ selectedResume.email }}</span>
+            <span v-if="selectedResume.phone">{{ selectedResume.phone }}</span>
+            <span v-if="selectedResume.phone && selectedResume.email"> | </span>
+            <span v-if="selectedResume.email">{{ selectedResume.email }}</span>
+          </div>
+          <div class="salary-info" v-if="selectedResume.expectedSalary">
+            <span>期望薪资：{{ selectedResume.expectedSalary }}</span>
           </div>
         </div>
-        
-        <div class="resume-section">
+
+        <div class="resume-section" v-if="selectedResume.careerObjective">
           <h4>职业目标</h4>
           <p>{{ selectedResume.careerObjective }}</p>
         </div>
-        
-        <div class="resume-section">
+
+        <div class="resume-section" v-if="selectedResume.educationList && selectedResume.educationList.length > 0">
           <h4>教育背景</h4>
           <div v-for="(edu, index) in selectedResume.educationList" :key="index" class="edu-item">
             <div class="edu-header">
               <span class="school">{{ edu.school }}</span>
-              <span class="period">{{ edu.startDate }} - {{ edu.endDate }}</span>
+              <span class="period">{{ edu.startDate }} - {{ edu.endDate || '至今' }}</span>
             </div>
             <div class="edu-details">
-              <span class="major">{{ edu.major }}</span>
-              <span class="degree">{{ edu.degree }}</span>
+              <span class="major" v-if="edu.major">{{ edu.major }}</span>
+              <span class="degree" v-if="edu.degree">{{ edu.degree }}</span>
             </div>
-            <p class="edu-desc">{{ edu.description }}</p>
+            <p class="edu-desc" v-if="edu.description">{{ edu.description }}</p>
           </div>
         </div>
-        
-        <div class="resume-section">
+
+        <div class="resume-section" v-if="selectedResume.workExperienceList && selectedResume.workExperienceList.length > 0">
           <h4>工作经历</h4>
           <div v-for="(work, index) in selectedResume.workExperienceList" :key="index" class="work-item">
             <div class="work-header">
               <span class="company">{{ work.company }}</span>
-              <span class="period">{{ work.startDate }} - {{ work.endDate }}</span>
+              <span class="period">{{ work.startDate }} - {{ work.endDate || '至今' }}</span>
             </div>
             <div class="work-details">
-              <span class="position">{{ work.position }}</span>
+              <span class="position" v-if="work.position">{{ work.position }}</span>
             </div>
-            <ul class="work-responsibilities">
+            <p class="work-desc" v-if="work.description">{{ work.description }}</p>
+            <ul class="work-responsibilities" v-if="work.responsibilities && work.responsibilities.length > 0">
               <li v-for="(resp, respIndex) in work.responsibilities" :key="respIndex">{{ resp }}</li>
             </ul>
           </div>
         </div>
-        
-        <div class="resume-section">
-          <h4>技能证书</h4>
-          <div class="certificates">
-            <el-tag v-for="(cert, index) in selectedResume.certificates" :key="index" size="small" type="info" class="cert-item">
-              {{ cert.name }} ({{ cert.date }})
+
+        <div class="resume-section" v-if="selectedResume.projectExperienceList && selectedResume.projectExperienceList.length > 0">
+          <h4>项目经验</h4>
+          <div v-for="(project, index) in selectedResume.projectExperienceList" :key="index" class="project-item">
+            <div class="project-header">
+              <span class="project-name">{{ project.name }}</span>
+              <span class="period" v-if="project.startDate">{{ project.startDate }} - {{ project.endDate || '至今' }}</span>
+            </div>
+            <div class="project-role" v-if="project.role">
+              <span>角色：{{ project.role }}</span>
+            </div>
+            <p class="project-desc" v-if="project.description">{{ project.description }}</p>
+          </div>
+        </div>
+
+        <div class="resume-section" v-if="selectedResume.skills && selectedResume.skills.length > 0">
+          <h4>专业技能</h4>
+          <div class="skills-list">
+            <el-tag v-for="(skill, index) in selectedResume.skills" :key="index" size="small" class="skill-item">
+              {{ typeof skill === 'string' ? skill : (skill.name || skill.skill) }}
+              <span v-if="skill.level"> - {{ skill.level }}</span>
             </el-tag>
           </div>
+        </div>
+
+        <div class="resume-section" v-if="selectedResume.certificates && selectedResume.certificates.length > 0">
+          <h4>证书资质</h4>
+          <div class="certificates">
+            <el-tag v-for="(cert, index) in selectedResume.certificates" :key="index" size="small" type="success" class="cert-item">
+              {{ cert.name }}
+              <span v-if="cert.date"> ({{ cert.date }})</span>
+            </el-tag>
+          </div>
+        </div>
+
+        <div class="resume-empty" v-if="!selectedResume.educationList?.length && !selectedResume.workExperienceList?.length && !selectedResume.skills?.length">
+          <el-empty description="该用户暂未完善简历信息"></el-empty>
         </div>
       </div>
       <template #footer>
@@ -198,10 +277,11 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   getJobApplications,
   updateApplicationStatus,
-  getResumeDetail,
-  sendInterviewInvitation,
+  sendInterviewInvitation as sendInterviewInvitationApi,
   getCurrentUser,
-  getEnterpriseJobs
+  getEnterpriseJobs,
+  getEnterpriseInterviews,
+  getResumeByUserId
 } from '@/api/enterprise'
 
 export default {
@@ -255,6 +335,50 @@ export default {
     const pageSize = ref(10)
     const totalResumes = ref(0)
 
+    const pad2 = (num) => String(num).padStart(2, '0')
+
+    const formatDateTime = (value) => {
+      if (!value && value !== 0) return '-'
+
+      let date
+      if (value instanceof Date) {
+        date = value
+      } else if (typeof value === 'number') {
+        date = new Date(value)
+      } else if (typeof value === 'string') {
+        const trimmed = value.trim()
+        if (!trimmed) return '-'
+        if (/^\d+$/.test(trimmed)) {
+          const num = Number(trimmed)
+          date = new Date(trimmed.length <= 10 ? num * 1000 : num)
+        } else {
+          date = new Date(trimmed.replace(' ', 'T'))
+        }
+      } else {
+        date = new Date(value)
+      }
+
+      if (Number.isNaN(date?.getTime?.())) return '-'
+      return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`
+    }
+
+    const normalizeApplicationRecord = (item = {}) => {
+      const userName = item.userName || item.username || item.name || (item.userId ? `用户#${item.userId}` : '')
+      const positionName = item.positionName || item.jobTitle || item.title || (item.jobId ? `职位#${item.jobId}` : '')
+      const createTime = item.createTime || item.applyTime || ''
+
+      return {
+        ...item,
+        userName,
+        positionName,
+        careerDirection: item.careerDirection || item.intention || '',
+        education: item.education || '',
+        workExperience: item.workExperience || item.experience || '',
+        createTime,
+        createTimeDisplay: formatDateTime(createTime)
+      }
+    }
+
     // 加载企业职位列表（用于筛选）
     const loadJobs = async () => {
       if (!enterpriseId.value) return
@@ -281,12 +405,14 @@ export default {
           currentPage.value,
           pageSize.value,
           searchForm.position || undefined,
-          searchForm.status || undefined
+          searchForm.status || undefined,
+          enterpriseId.value || undefined
         )
 
         if (response.data) {
-          resumes.value = response.data.records || response.data.list || []
-          totalResumes.value = response.data.total || 0
+          const rawRecords = response.data.records || response.data.list || []
+          resumes.value = rawRecords.map(record => normalizeApplicationRecord(record))
+          totalResumes.value = response.data.total != null ? response.data.total : resumes.value.length
         }
       } catch (error) {
         console.error('加载简历失败:', error)
@@ -324,7 +450,8 @@ export default {
         0: '已投递',
         1: '已查看',
         2: '面试邀请',
-        3: '已拒绝'
+        3: '已拒绝',
+        4: '已通过'
       }
       return statusMap[status] || '未知'
     }
@@ -333,8 +460,9 @@ export default {
       const typeMap = {
         0: 'info',
         1: 'warning',
-        2: 'success',
-        3: 'danger'
+        2: 'primary',
+        3: 'danger',
+        4: 'success'
       }
       return typeMap[status] || 'info'
     }
@@ -353,9 +481,43 @@ export default {
       loadResumes()
     }
     
-    const viewResume = (resume) => {
-      selectedResume.value = resume
-      resumeDetailDialogVisible.value = true
+    const viewResume = async (resume) => {
+      if (!resume.userId) {
+        ElMessage.warning('无法获取用户信息')
+        return
+      }
+
+      try {
+        const response = await getResumeByUserId(resume.userId)
+        if (response.data) {
+          const resumeData = response.data
+          // 构建完整的简历数据
+          selectedResume.value = {
+            ...resume,
+            userName: resumeData.basicInfo?.name || resume.userName,
+            phone: resumeData.basicInfo?.phone || resume.phone || '',
+            email: resumeData.basicInfo?.email || resume.email || '',
+            careerDirection: resumeData.basicInfo?.careerDirection || resumeData.basicInfo?.careerObjective || resume.careerDirection || '',
+            careerObjective: resumeData.basicInfo?.careerObjective || '',
+            education: resumeData.basicInfo?.education || resume.education || '',
+            workExperience: resumeData.basicInfo?.workYears ? `${resumeData.basicInfo.workYears}年` : resume.workExperience || '',
+            location: resumeData.basicInfo?.location || '',
+            expectedSalary: resumeData.basicInfo?.expectedSalary || '',
+            avatar: resumeData.basicInfo?.avatar || '',
+            educationList: resumeData.education || [],
+            workExperienceList: resumeData.workExperience || [],
+            projectExperienceList: resumeData.projectExperience || [],
+            skills: resumeData.skills || [],
+            certificates: resumeData.certificates || []
+          }
+          resumeDetailDialogVisible.value = true
+        } else {
+          ElMessage.warning('该用户暂无简历信息')
+        }
+      } catch (error) {
+        console.error('获取简历详情失败:', error)
+        ElMessage.error('获取简历详情失败')
+      }
     }
     
     const markAsViewed = async (resume) => {
@@ -369,24 +531,32 @@ export default {
       }
     }
     
-    const sendInterviewInvitation = (resume) => {
+    const openInterviewDialog = (resume) => {
       // 填充面试邀请表单
+      selectedResume.value = resume
       interviewForm.position = resume.positionName
       interviewForm.candidateName = resume.userName
+      // 重置其他字段
+      interviewForm.interviewTime = ''
+      interviewForm.interviewLocation = ''
+      interviewForm.interviewType = ''
+      interviewForm.interviewer = ''
+      interviewForm.remark = ''
       interviewDialogVisible.value = true
     }
-    
+
     const sendInterview = async () => {
       // 验证表单
       const valid = await interviewFormRef.value?.validate()
       if (!valid) return
 
       try {
-        // 这里需要构建面试邀请数据
-        // 注意：需要根据实际数据结构调整
+        // 构建面试邀请数据
         const interviewData = {
-          resumeId: selectedResume.value?.id,
-          jobId: selectedResume.value?.positionId, // 需要实际字段
+          deliveryId: selectedResume.value?.id,
+          userId: selectedResume.value?.userId,
+          enterpriseId: enterpriseId.value,
+          jobId: selectedResume.value?.jobId || selectedResume.value?.positionId,
           interviewTime: interviewForm.interviewTime,
           interviewLocation: interviewForm.interviewLocation,
           interviewType: interviewForm.interviewType,
@@ -394,7 +564,7 @@ export default {
           remark: interviewForm.remark
         }
 
-        await sendInterviewInvitation(interviewData)
+        await sendInterviewInvitationApi(interviewData)
         interviewDialogVisible.value = false
         ElMessage.success('面试邀请发送成功')
         await loadResumes()
@@ -414,10 +584,83 @@ export default {
         ElMessage.error('拒绝简历失败')
       }
     }
-    
-    const viewInterview = (resume) => {
-      // TODO: 查看面试详情
-      ElMessage.info('查看面试详情功能开发中')
+
+    const restoreResume = async (resume) => {
+      try {
+        await ElMessageBox.confirm(
+          '确定要恢复该简历吗？恢复后状态将变为"已查看"',
+          '确认恢复',
+          {
+            confirmButtonText: '确定',
+            cancelButtonText: '取消',
+            type: 'warning'
+          }
+        )
+        await updateApplicationStatus(resume.id, 1)
+        ElMessage.success('简历已恢复')
+        await loadResumes()
+      } catch (error) {
+        if (error !== 'cancel') {
+          console.error('恢复简历失败:', error)
+          ElMessage.error('恢复简历失败')
+        }
+      }
+    }
+
+    const getInterviewStatusText = (status) => {
+      const statusMap = {
+        0: '待确认',
+        1: '已确认',
+        2: '已完成',
+        3: '已取消'
+      }
+      return statusMap[status] || '未知'
+    }
+
+    const viewInterview = async (resume) => {
+      if (!enterpriseId.value) {
+        ElMessage.warning('企业信息未初始化，请稍后重试')
+        return
+      }
+
+      try {
+        const response = await getEnterpriseInterviews(1, 200, enterpriseId.value)
+        const records = response.data?.records || response.data?.list || []
+
+        const matched = records
+          .filter((item) =>
+            String(item.deliveryId || '') === String(resume.id || '') ||
+            (
+              String(item.userId || '') === String(resume.userId || '') &&
+              String(item.jobId || '') === String(resume.jobId || resume.positionId || '')
+            )
+          )
+          .sort((a, b) => new Date(b.interviewTime || 0) - new Date(a.interviewTime || 0))
+
+        if (matched.length === 0) {
+          ElMessage.info('该候选人暂无面试记录')
+          return
+        }
+
+        const latest = matched[0]
+        const interviewTime = formatDateTime(latest.interviewTime)
+        const detailText = [
+          `面试ID：${latest.id || '-'}`,
+          `候选人：${resume.userName || '-'}`,
+          `职位：${resume.positionName || '-'}`,
+          `时间：${interviewTime}`,
+          `地点：${latest.interviewLocation || '-'}`,
+          `形式：${latest.interviewType || '-'}`,
+          `面试官：${latest.interviewer || '-'}`,
+          `状态：${getInterviewStatusText(latest.status)}`,
+          `备注：${latest.remark || '-'}`
+        ].join('\n')
+
+        ElMessageBox.alert(detailText, '面试详情', { confirmButtonText: '确定' })
+      } catch (error) {
+        console.error('获取面试详情失败:', error)
+        ElMessage.error('获取面试详情失败')
+      }
     }
     
     const handleSizeChange = (size) => {
@@ -438,6 +681,7 @@ export default {
       searchForm,
       interviewForm,
       interviewRules,
+      interviewFormRef,
       jobs,
       resumes,
       currentPage,
@@ -449,9 +693,10 @@ export default {
       resetSearch,
       viewResume,
       markAsViewed,
-      sendInterviewInvitation,
+      openInterviewDialog,
       sendInterview,
       rejectResume,
+      restoreResume,
       viewInterview,
       handleSizeChange,
       handleCurrentChange
@@ -481,8 +726,27 @@ export default {
   text-align: center;
 }
 
+.time-text {
+  font-variant-numeric: tabular-nums;
+  color: #606266;
+}
+
+.action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.action-btn {
+  min-width: 92px;
+  margin: 0 !important;
+}
+
 .resume-detail {
   padding: 20px;
+  max-height: 60vh;
+  overflow-y: auto;
 }
 
 .resume-header {
@@ -490,6 +754,10 @@ export default {
   margin-bottom: 20px;
   padding-bottom: 20px;
   border-bottom: 1px solid #e0e0e0;
+}
+
+.avatar-section {
+  margin-bottom: 15px;
 }
 
 .resume-header h3 {
@@ -516,6 +784,12 @@ export default {
 
 .contact-info {
   color: #606266;
+}
+
+.salary-info {
+  margin-top: 10px;
+  color: #e6a23c;
+  font-weight: 500;
 }
 
 .resume-section {
@@ -573,6 +847,48 @@ export default {
   line-height: 1.5;
 }
 
+.work-desc {
+  color: #606266;
+  line-height: 1.6;
+  margin: 10px 0;
+}
+
+.project-item {
+  margin-bottom: 20px;
+}
+
+.project-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 5px;
+}
+
+.project-name {
+  font-weight: bold;
+  color: #303133;
+}
+
+.project-role {
+  color: #409EFF;
+  margin-bottom: 5px;
+}
+
+.project-desc {
+  color: #606266;
+  line-height: 1.6;
+}
+
+.skills-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.skill-item {
+  margin-bottom: 5px;
+}
+
 .certificates {
   display: flex;
   flex-wrap: wrap;
@@ -581,6 +897,10 @@ export default {
 
 .cert-item {
   margin-bottom: 10px;
+}
+
+.resume-empty {
+  padding: 40px 0;
 }
 
 .dialog-footer {

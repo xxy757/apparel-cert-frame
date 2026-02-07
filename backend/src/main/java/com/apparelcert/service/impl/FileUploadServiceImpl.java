@@ -7,12 +7,13 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.*;
+import javax.annotation.PostConstruct;
 
 /**
  * 文件上传服务实现类
@@ -22,11 +23,22 @@ public class FileUploadServiceImpl implements FileUploadService {
 
     private static final Logger logger = LoggerFactory.getLogger(FileUploadServiceImpl.class);
 
-    @Value("${file.upload.path:./uploads}")
+    @Value("${file.upload.path:${user.home}/apparel-cert/uploads}")
     private String uploadPath;
 
     @Value("${file.upload.base-url:/uploads}")
     private String baseUrl;
+
+    @PostConstruct
+    public void initUploadRoot() {
+        try {
+            Path uploadRoot = resolveUploadRoot();
+            Files.createDirectories(uploadRoot);
+            logger.info("文件上传根目录初始化完成: {}", uploadRoot);
+        } catch (IOException e) {
+            logger.error("文件上传根目录初始化失败: {}", e.getMessage(), e);
+        }
+    }
 
     // 允许的图片类型
     private static final String[] IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"};
@@ -95,15 +107,27 @@ public class FileUploadServiceImpl implements FileUploadService {
 
             // 创建目录
             String subDir = type + "/" + getDatePath();
-            Path uploadDir = Paths.get(uploadPath, subDir);
+            Path uploadRoot = resolveUploadRoot();
+            Path uploadDir = uploadRoot.resolve(subDir).normalize();
+            if (!uploadDir.startsWith(uploadRoot)) {
+                result.put("success", false);
+                result.put("message", "非法文件路径");
+                return result;
+            }
             Files.createDirectories(uploadDir);
 
             // 保存文件
-            Path filePath = uploadDir.resolve(newFilename);
-            file.transferTo(filePath.toFile());
+            Path filePath = uploadDir.resolve(newFilename).normalize();
+            if (!filePath.startsWith(uploadRoot)) {
+                result.put("success", false);
+                result.put("message", "非法文件路径");
+                return result;
+            }
+            Files.createDirectories(filePath.getParent());
+            Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
 
             // 返回结果
-            String fileUrl = baseUrl + "/" + subDir + "/" + newFilename;
+            String fileUrl = normalizeBaseUrl() + "/" + subDir + "/" + newFilename;
             result.put("success", true);
             result.put("url", fileUrl);
             result.put("filename", newFilename);
@@ -217,17 +241,24 @@ public class FileUploadServiceImpl implements FileUploadService {
 
         try {
             // 从URL中提取文件路径
-            String relativePath = fileUrl.replace(baseUrl, "");
-            Path filePath = Paths.get(uploadPath, relativePath);
-            
-            File file = filePath.toFile();
-            if (file.exists()) {
-                boolean deleted = file.delete();
-                if (deleted) {
-                    logger.info("文件删除成功: {}", fileUrl);
-                }
-                return deleted;
+            String normalizedBaseUrl = normalizeBaseUrl();
+            String relativePath = fileUrl;
+            if (relativePath.startsWith(normalizedBaseUrl)) {
+                relativePath = relativePath.substring(normalizedBaseUrl.length());
             }
+            relativePath = relativePath.replaceFirst("^/+", "");
+
+            Path uploadRoot = resolveUploadRoot();
+            Path filePath = uploadRoot.resolve(relativePath).normalize();
+            if (!filePath.startsWith(uploadRoot)) {
+                logger.warn("非法删除路径: {}", filePath);
+                return false;
+            }
+            boolean deleted = Files.deleteIfExists(filePath);
+            if (deleted) {
+                logger.info("文件删除成功: {}", fileUrl);
+            }
+            return deleted;
         } catch (Exception e) {
             logger.error("文件删除失败: {}", e.getMessage());
         }
@@ -271,5 +302,23 @@ public class FileUploadServiceImpl implements FileUploadService {
             cal.get(Calendar.YEAR), 
             cal.get(Calendar.MONTH) + 1, 
             cal.get(Calendar.DAY_OF_MONTH));
+    }
+
+    private Path resolveUploadRoot() {
+        return Paths.get(uploadPath).toAbsolutePath().normalize();
+    }
+
+    private String normalizeBaseUrl() {
+        String normalized = baseUrl == null ? "/uploads" : baseUrl.trim();
+        if (normalized.isEmpty()) {
+            normalized = "/uploads";
+        }
+        if (!normalized.startsWith("/")) {
+            normalized = "/" + normalized;
+        }
+        while (normalized.endsWith("/") && normalized.length() > 1) {
+            normalized = normalized.substring(0, normalized.length() - 1);
+        }
+        return normalized;
     }
 }

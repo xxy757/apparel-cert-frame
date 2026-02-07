@@ -127,6 +127,7 @@ import {
   ArrowRight, Bell, InfoFilled
 } from '@element-plus/icons-vue'
 import request from '@/utils/request'
+import { getSession } from '@/utils/auth'
 
 const router = useRouter()
 const activeTab = ref('all')
@@ -134,6 +135,7 @@ const messages = ref([])
 const loading = ref(false)
 const hasMore = ref(true)
 const currentPage = ref(1)
+const pageSize = ref(10)
 const showDetailDialog = ref(false)
 const currentMessage = ref(null)
 
@@ -183,10 +185,23 @@ const viewMessage = (message) => {
   if (!message.isRead) markAsRead(message)
 }
 
+const getAuthInfo = () => {
+  const session = getSession('1')
+  const userId = Number(session.userId || 0)
+  const userType = 1
+  return { userId, userType }
+}
+
 // 标记已读
 const markAsRead = async (message) => {
   try {
-    await request.put(`/notification/read/${message.id}`)
+    const { userId } = getAuthInfo()
+    if (!userId) return
+    await request({
+      url: `/notification/read/${message.id}`,
+      method: 'put',
+      params: { userId }
+    })
   } catch (e) {}
   message.isRead = true
 }
@@ -194,7 +209,13 @@ const markAsRead = async (message) => {
 // 全部已读
 const markAllAsRead = async () => {
   try {
-    await request.put('/notification/read-all')
+    const { userId, userType } = getAuthInfo()
+    if (!userId || !userType) return
+    await request({
+      url: '/notification/read-all',
+      method: 'put',
+      params: { userId, userType }
+    })
   } catch (e) {}
   messages.value.forEach(m => m.isRead = true)
   ElMessage.success('已全部标记为已读')
@@ -204,7 +225,9 @@ const markAllAsRead = async () => {
 const deleteMessage = (message) => {
   ElMessageBox.confirm('确定删除这条消息吗？', '删除确认', { type: 'warning' }).then(async () => {
     try {
-      await request.delete(`/notification/${message.id}`)
+      const { userId } = getAuthInfo()
+      if (!userId) return
+      await request.delete(`/notification/${message.id}`, { params: { userId } })
     } catch (e) {}
     const index = messages.value.findIndex(m => m.id === message.id)
     if (index > -1) messages.value.splice(index, 1)
@@ -221,32 +244,95 @@ const clearAllMessages = () => {
 }
 
 // 处理操作
-const handleAction = (message) => {
-  if (message.actionUrl) {
-    router.push(message.actionUrl)
-    showDetailDialog.value = false
+const resolveFallbackPath = (type) => {
+  const pathMap = {
+    certification: '/personal/certification',
+    interview: '/personal/applications',
+    job: '/personal/job',
+    system: '/personal/messages'
   }
+  return pathMap[type] || '/personal/messages'
+}
+
+const handleAction = (message) => {
+  const actionUrl = (message?.actionUrl || '').trim()
+  if (!actionUrl) {
+    ElMessage.info('该消息暂未配置跳转链接')
+    return
+  }
+
+  if (/^https?:\/\//i.test(actionUrl)) {
+    window.open(actionUrl, '_blank')
+    showDetailDialog.value = false
+    return
+  }
+
+  const target = router.resolve(actionUrl)
+  if (!target.matched || target.matched.length === 0) {
+    const fallback = resolveFallbackPath(message?.type)
+    ElMessage.warning('跳转地址不存在，已为您跳转到相关页面')
+    router.push(fallback)
+    showDetailDialog.value = false
+    return
+  }
+
+  router.push(actionUrl)
+  showDetailDialog.value = false
 }
 
 // 加载更多
 const loadMore = async () => {
-  loading.value = true
-  currentPage.value++
-  setTimeout(() => { loading.value = false; hasMore.value = false }, 1000)
+  if (loading.value || !hasMore.value) return
+  currentPage.value += 1
+  await loadMessages(true)
 }
 
 // 加载消息
-const loadMessages = async () => {
+const loadMessages = async (append = false) => {
+  const { userId, userType } = getAuthInfo()
+  if (!userId || !userType) {
+    messages.value = []
+    hasMore.value = false
+    return
+  }
+
+  loading.value = true
   try {
-    const response = await request.get('/notification/list')
-    messages.value = response.data || []
+    const response = await request.get('/notification/list', {
+      params: {
+        userId,
+        userType,
+        current: currentPage.value,
+        size: pageSize.value
+      }
+    })
+
+    const pageData = response.data || {}
+    const rawRecords = Array.isArray(pageData)
+      ? pageData
+      : (pageData.records || pageData.list || [])
+
+    const normalized = rawRecords.map(item => ({
+      ...item,
+      isRead: item.isRead === 1 || item.isRead === true,
+      type: item.type || 'system'
+    }))
+
+    messages.value = append ? [...messages.value, ...normalized] : normalized
+
+    if (pageData.pages !== undefined) {
+      hasMore.value = currentPage.value < pageData.pages
+    } else if (pageData.total !== undefined) {
+      hasMore.value = messages.value.length < pageData.total
+    } else {
+      hasMore.value = normalized.length === pageSize.value
+    }
   } catch (error) {
-    messages.value = [
-      { id: 1, type: 'certification', title: '认证申请已通过', content: '恭喜！您的"服装设计师（中级）"认证申请已通过审核，证书将在3个工作日内发放。', createTime: new Date().toISOString(), isRead: false, actionUrl: '/personal/certification', actionText: '查看证书' },
-      { id: 2, type: 'interview', title: '收到面试邀请', content: '上海时尚服饰有限公司邀请您参加"高级服装设计师"职位的面试，请在24小时内确认。', createTime: new Date(Date.now() - 3600000).toISOString(), isRead: false, actionUrl: '/personal/applications', actionText: '查看详情' },
-      { id: 3, type: 'job', title: '新职位推荐', content: '根据您的简历和技能认证，为您推荐5个高匹配度职位，快来看看吧！', createTime: new Date(Date.now() - 86400000).toISOString(), isRead: true, actionUrl: '/personal/job', actionText: '查看职位' },
-      { id: 4, type: 'system', title: '系统维护通知', content: '平台将于本周六凌晨2:00-6:00进行系统升级维护，届时部分功能可能无法使用。', createTime: new Date(Date.now() - 172800000).toISOString(), isRead: true }
-    ]
+    if (!append) messages.value = []
+    hasMore.value = false
+    ElMessage.error('加载消息失败')
+  } finally {
+    loading.value = false
   }
 }
 

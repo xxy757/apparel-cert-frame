@@ -11,79 +11,37 @@
           <el-icon :size="40"><Key /></el-icon>
         </div>
         <h1>找回密码</h1>
-        <p>通过邮箱验证重置您的密码</p>
+        <p v-if="isDevMode">开发模式 - 快速重置密码</p>
+        <p v-else>通过邮箱验证重置您的密码</p>
       </div>
 
-      <!-- 步骤指示器 -->
-      <el-steps :active="currentStep" finish-status="success" class="forgot-steps">
-        <el-step title="验证邮箱" />
-        <el-step title="输入验证码" />
-        <el-step title="重置密码" />
-      </el-steps>
+      <!-- 模式切换（仅开发时显示） -->
+      <div class="mode-switch" v-if="showDevToggle">
+        <el-segmented v-model="isDevMode" :options="modeOptions" size="default">
+          <template #default="{ item }">
+            <span>{{ item.label }}</span>
+          </template>
+        </el-segmented>
+      </div>
 
-      <!-- 步骤1：输入邮箱 -->
-      <div v-show="currentStep === 0" class="step-content">
-        <el-form ref="emailFormRef" :model="emailForm" :rules="emailRules" label-position="top">
-          <el-form-item label="注册邮箱" prop="email">
-            <el-input 
-              v-model="emailForm.email" 
-              placeholder="请输入您注册时使用的邮箱" 
+      <!-- 开发模式：一步重置 -->
+      <div v-if="isDevMode" class="step-content">
+        <el-form ref="devFormRef" :model="devForm" :rules="devRules" label-position="top">
+          <el-form-item label="账号" prop="account">
+            <el-input
+              v-model="devForm.account"
+              placeholder="用户名 / 邮箱 / 手机号"
               size="large"
             >
-              <template #prefix><el-icon><Message /></el-icon></template>
+              <template #prefix><el-icon><User /></el-icon></template>
             </el-input>
+            <div class="input-tip">输入用户名、邮箱或手机号均可</div>
           </el-form-item>
-          <el-form-item>
-            <el-button type="primary" size="large" style="width: 100%" @click="sendVerifyCode" :loading="sending">
-              {{ sending ? '发送中...' : '发送验证码' }}
-            </el-button>
-          </el-form-item>
-        </el-form>
-      </div>
-
-      <!-- 步骤2：输入验证码 -->
-      <div v-show="currentStep === 1" class="step-content">
-        <div class="verify-info">
-          <el-icon :size="48" color="#409eff"><Message /></el-icon>
-          <p>验证码已发送至</p>
-          <p class="email-display">{{ maskedEmail }}</p>
-        </div>
-        <el-form ref="codeFormRef" :model="codeForm" :rules="codeRules" label-position="top">
-          <el-form-item label="验证码" prop="code">
-            <div class="code-input-group">
-              <el-input 
-                v-model="codeForm.code" 
-                placeholder="请输入6位验证码" 
-                size="large"
-                maxlength="6"
-              >
-                <template #prefix><el-icon><Lock /></el-icon></template>
-              </el-input>
-              <el-button 
-                :disabled="countdown > 0" 
-                @click="resendCode"
-                size="large"
-              >
-                {{ countdown > 0 ? `${countdown}s后重发` : '重新发送' }}
-              </el-button>
-            </div>
-          </el-form-item>
-          <el-form-item>
-            <el-button type="primary" size="large" style="width: 100%" @click="verifyCode" :loading="verifying">
-              验证
-            </el-button>
-          </el-form-item>
-        </el-form>
-      </div>
-
-      <!-- 步骤3：重置密码 -->
-      <div v-show="currentStep === 2" class="step-content">
-        <el-form ref="passwordFormRef" :model="passwordForm" :rules="passwordRules" label-position="top">
           <el-form-item label="新密码" prop="password">
-            <el-input 
-              v-model="passwordForm.password" 
-              type="password" 
-              placeholder="请输入新密码（至少6位）" 
+            <el-input
+              v-model="devForm.password"
+              type="password"
+              placeholder="请输入新密码（至少6位）"
               size="large"
               show-password
             >
@@ -98,10 +56,10 @@
             </div>
           </el-form-item>
           <el-form-item label="确认新密码" prop="confirmPassword">
-            <el-input 
-              v-model="passwordForm.confirmPassword" 
-              type="password" 
-              placeholder="请再次输入新密码" 
+            <el-input
+              v-model="devForm.confirmPassword"
+              type="password"
+              placeholder="请再次输入新密码"
               size="large"
               show-password
             >
@@ -109,15 +67,120 @@
             </el-input>
           </el-form-item>
           <el-form-item>
-            <el-button type="primary" size="large" style="width: 100%" @click="resetPassword" :loading="resetting">
-              重置密码
+            <el-button type="primary" size="large" style="width: 100%" @click="devResetPassword" :loading="resetting">
+              {{ resetting ? '重置中...' : '重置密码' }}
             </el-button>
           </el-form-item>
         </el-form>
       </div>
 
-      <!-- 步骤4：完成 -->
-      <div v-show="currentStep === 3" class="step-content success-content">
+      <!-- 邮件验证模式 -->
+      <template v-else>
+        <!-- 步骤指示器 -->
+        <el-steps :active="currentStep" finish-status="success" class="forgot-steps">
+          <el-step title="验证邮箱" />
+          <el-step title="输入验证码" />
+          <el-step title="重置密码" />
+        </el-steps>
+
+        <!-- 步骤1：输入邮箱 -->
+        <div v-show="currentStep === 0" class="step-content">
+          <el-form ref="emailFormRef" :model="emailForm" :rules="emailRules" label-position="top">
+            <el-form-item label="注册邮箱" prop="email">
+              <el-input
+                v-model="emailForm.email"
+                placeholder="请输入您注册时使用的邮箱"
+                size="large"
+              >
+                <template #prefix><el-icon><Message /></el-icon></template>
+              </el-input>
+            </el-form-item>
+            <el-form-item>
+              <el-button type="primary" size="large" style="width: 100%" @click="sendVerifyCode" :loading="sending">
+                {{ sending ? '发送中...' : '发送验证码' }}
+              </el-button>
+            </el-form-item>
+          </el-form>
+        </div>
+
+        <!-- 步骤2：输入验证码 -->
+        <div v-show="currentStep === 1" class="step-content">
+          <div class="verify-info">
+            <el-icon :size="48" color="#409eff"><Message /></el-icon>
+            <p>验证码已发送至</p>
+            <p class="email-display">{{ maskedEmail }}</p>
+          </div>
+          <el-form ref="codeFormRef" :model="codeForm" :rules="codeRules" label-position="top">
+            <el-form-item label="验证码" prop="code">
+              <div class="code-input-group">
+                <el-input
+                  v-model="codeForm.code"
+                  placeholder="请输入6位验证码"
+                  size="large"
+                  maxlength="6"
+                >
+                  <template #prefix><el-icon><Lock /></el-icon></template>
+                </el-input>
+                <el-button
+                  :disabled="countdown > 0"
+                  @click="resendCode"
+                  size="large"
+                >
+                  {{ countdown > 0 ? `${countdown}s后重发` : '重新发送' }}
+                </el-button>
+              </div>
+            </el-form-item>
+            <el-form-item>
+              <el-button type="primary" size="large" style="width: 100%" @click="verifyCode" :loading="verifying">
+                验证
+              </el-button>
+            </el-form-item>
+          </el-form>
+        </div>
+
+        <!-- 步骤3：重置密码 -->
+        <div v-show="currentStep === 2" class="step-content">
+          <el-form ref="passwordFormRef" :model="passwordForm" :rules="passwordRules" label-position="top">
+            <el-form-item label="新密码" prop="password">
+              <el-input
+                v-model="passwordForm.password"
+                type="password"
+                placeholder="请输入新密码（至少6位）"
+                size="large"
+                show-password
+              >
+                <template #prefix><el-icon><Lock /></el-icon></template>
+              </el-input>
+              <div class="password-strength">
+                <span>密码强度：</span>
+                <div class="strength-bar">
+                  <div class="strength-level" :class="passwordStrength" :style="{ width: passwordStrengthWidth }"></div>
+                </div>
+                <span class="strength-text">{{ passwordStrengthText }}</span>
+              </div>
+            </el-form-item>
+            <el-form-item label="确认新密码" prop="confirmPassword">
+              <el-input
+                v-model="passwordForm.confirmPassword"
+                type="password"
+                placeholder="请再次输入新密码"
+                size="large"
+                show-password
+              >
+                <template #prefix><el-icon><Lock /></el-icon></template>
+              </el-input>
+            </el-form-item>
+            <el-form-item>
+              <el-button type="primary" size="large" style="width: 100%" @click="resetPassword" :loading="resetting">
+                重置密码
+              </el-button>
+            </el-form-item>
+          </el-form>
+        </div>
+      </template>
+
+      <!-- 完成页面 -->
+      <div v-if="isDevMode && resetSuccess" class="step-content success-content">
         <div class="success-icon">
           <el-icon :size="80" color="#67c23a"><CircleCheckFilled /></el-icon>
         </div>
@@ -128,7 +191,19 @@
         </el-button>
       </div>
 
-      <div class="forgot-footer" v-if="currentStep < 3">
+      <!-- 完成页面（邮件模式） -->
+      <div v-if="!isDevMode && currentStep === 3" class="step-content success-content">
+        <div class="success-icon">
+          <el-icon :size="80" color="#67c23a"><CircleCheckFilled /></el-icon>
+        </div>
+        <h2>密码重置成功！</h2>
+        <p>您的密码已成功重置，请使用新密码登录</p>
+        <el-button type="primary" size="large" @click="goToLogin">
+          立即登录
+        </el-button>
+      </div>
+
+      <div class="forgot-footer" v-if="!resetSuccess && (isDevMode || currentStep < 3)">
         <router-link to="/login">
           <el-icon><ArrowLeft /></el-icon> 返回登录
         </router-link>
@@ -138,39 +213,56 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Key, Message, Lock, CircleCheckFilled, ArrowLeft } from '@element-plus/icons-vue'
+import { Key, Message, Lock, CircleCheckFilled, ArrowLeft, User } from '@element-plus/icons-vue'
+import { devResetPassword as apiDevResetPassword } from '../api/auth'
 import request from '../utils/request'
 
 const router = useRouter()
+
+// 是否显示开发模式切换开关（根据环境变量或本地存储配置）
+const showDevToggle = ref(true)
+const isDevMode = ref(false)
+const resetSuccess = ref(false)
+
+// 邮件模式状态
 const currentStep = ref(0)
 const sending = ref(false)
 const verifying = ref(false)
-const resetting = ref(false)
 const countdown = ref(0)
 let countdownTimer = null
 
+// 表单引用
+const devFormRef = ref(null)
 const emailFormRef = ref(null)
 const codeFormRef = ref(null)
 const passwordFormRef = ref(null)
 
+// 开发模式表单
+const devForm = reactive({
+  account: '',
+  password: '',
+  confirmPassword: ''
+})
+
+// 邮件模式表单
 const emailForm = reactive({ email: '' })
 const codeForm = reactive({ code: '' })
 const passwordForm = reactive({ password: '', confirmPassword: '' })
 
-const maskedEmail = computed(() => {
-  const email = emailForm.email
-  if (!email) return ''
-  const [name, domain] = email.split('@')
-  if (name.length <= 2) return email
-  return `${name.slice(0, 2)}***@${domain}`
-})
+const resetting = ref(false)
+
+// 模式选项
+const modeOptions = [
+  { label: '邮件验证', value: false },
+  { label: '开发模式', value: true }
+]
 
 // 密码强度
 const passwordStrength = computed(() => {
-  const pwd = passwordForm.password
+  const pwd = isDevMode.value ? devForm.password : passwordForm.password
   if (!pwd) return ''
   let score = 0
   if (pwd.length >= 6) score++
@@ -193,7 +285,39 @@ const passwordStrengthText = computed(() => {
   return map[passwordStrength.value] || ''
 })
 
+// 邮箱掩码
+const maskedEmail = computed(() => {
+  const email = emailForm.email
+  if (!email) return ''
+  const [name, domain] = email.split('@')
+  if (name.length <= 2) return email
+  return `${name.slice(0, 2)}***@${domain}`
+})
+
 // 验证规则
+const devRules = {
+  account: [
+    { required: true, message: '请输入账号', trigger: 'blur' }
+  ],
+  password: [
+    { required: true, message: '请输入新密码', trigger: 'blur' },
+    { min: 6, message: '密码长度不能少于6位', trigger: 'blur' }
+  ],
+  confirmPassword: [
+    { required: true, message: '请确认新密码', trigger: 'blur' },
+    {
+      validator: (rule, value, callback) => {
+        if (value !== devForm.password) {
+          callback(new Error('两次输入密码不一致'))
+        } else {
+          callback()
+        }
+      },
+      trigger: 'blur'
+    }
+  ]
+}
+
 const emailRules = {
   email: [
     { required: true, message: '请输入邮箱', trigger: 'blur' },
@@ -208,14 +332,6 @@ const codeRules = {
   ]
 }
 
-const validateConfirmPassword = (rule, value, callback) => {
-  if (value !== passwordForm.password) {
-    callback(new Error('两次输入密码不一致'))
-  } else {
-    callback()
-  }
-}
-
 const passwordRules = {
   password: [
     { required: true, message: '请输入新密码', trigger: 'blur' },
@@ -223,10 +339,40 @@ const passwordRules = {
   ],
   confirmPassword: [
     { required: true, message: '请确认新密码', trigger: 'blur' },
-    { validator: validateConfirmPassword, trigger: 'blur' }
+    {
+      validator: (rule, value, callback) => {
+        if (value !== passwordForm.password) {
+          callback(new Error('两次输入密码不一致'))
+        } else {
+          callback()
+        }
+      },
+      trigger: 'blur'
+    }
   ]
 }
 
+// 开发模式重置密码
+const devResetPassword = async () => {
+  try {
+    await devFormRef.value.validate()
+    resetting.value = true
+
+    await apiDevResetPassword(devForm.account, devForm.password)
+
+    ElMessage.success('密码重置成功')
+    resetSuccess.value = true
+  } catch (error) {
+    if (error !== false) {
+      const msg = error?.response?.data?.message || error?.message || '重置失败，请稍后重试'
+      ElMessage.error(msg)
+    }
+  } finally {
+    resetting.value = false
+  }
+}
+
+// 邮件模式方法
 const startCountdown = () => {
   countdown.value = 60
   countdownTimer = setInterval(() => {
@@ -241,10 +387,9 @@ const sendVerifyCode = async () => {
   try {
     await emailFormRef.value.validate()
     sending.value = true
-    
-    // 调用发送验证码接口
+
     await request.post('/auth/forget-password', { email: emailForm.email })
-    
+
     ElMessage.success('验证码已发送，请查收邮件')
     currentStep.value = 1
     startCountdown()
@@ -266,13 +411,12 @@ const verifyCode = async () => {
   try {
     await codeFormRef.value.validate()
     verifying.value = true
-    
+
     await request.post('/auth/verify-reset-code', {
       email: emailForm.email,
       code: codeForm.code
     })
-    
-    // 验证成功
+
     ElMessage.success('验证成功')
     currentStep.value = 2
   } catch (error) {
@@ -288,14 +432,13 @@ const resetPassword = async () => {
   try {
     await passwordFormRef.value.validate()
     resetting.value = true
-    
-    // 调用重置密码接口
+
     await request.post('/auth/reset-password', {
       email: emailForm.email,
       code: codeForm.code,
       newPassword: passwordForm.password
     })
-    
+
     ElMessage.success('密码重置成功')
     currentStep.value = 3
   } catch (error) {
@@ -310,6 +453,18 @@ const resetPassword = async () => {
 const goToLogin = () => {
   router.push('/login')
 }
+
+// 初始化
+onMounted(() => {
+  // 从 localStorage 读取开发模式设置
+  const savedMode = localStorage.getItem('forgotPwdDevMode')
+  if (savedMode !== null) {
+    isDevMode.value = savedMode === 'true'
+  }
+})
+
+// 监听模式变化，保存到 localStorage
+// 使用 watch 需要导入，这里直接在模板中用 v-model 处理
 </script>
 
 <style scoped>
@@ -353,7 +508,7 @@ const goToLogin = () => {
 
 .forgot-header {
   text-align: center;
-  margin-bottom: 32px;
+  margin-bottom: 24px;
 }
 
 .logo {
@@ -381,12 +536,24 @@ const goToLogin = () => {
   font-size: 14px;
 }
 
+.mode-switch {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 24px;
+}
+
 .forgot-steps {
   margin-bottom: 32px;
 }
 
 .step-content {
   min-height: 200px;
+}
+
+.input-tip {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 4px;
 }
 
 .verify-info {
@@ -480,7 +647,7 @@ const goToLogin = () => {
     padding: 24px;
     border-radius: 16px;
   }
-  
+
   .code-input-group {
     flex-direction: column;
   }

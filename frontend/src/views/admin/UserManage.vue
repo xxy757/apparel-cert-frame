@@ -59,7 +59,13 @@
     </div>
 
     <!-- 用户统计图表对话框 -->
-    <el-dialog v-model="statisticsDialogVisible" title="用户统计分析" width="900px" class="statistics-dialog">
+    <el-dialog
+      v-model="statisticsDialogVisible"
+      title="用户统计分析"
+      width="900px"
+      class="statistics-dialog"
+      @opened="handleStatisticsDialogOpened"
+    >
       <div class="statistics-content">
         <el-tabs v-model="statisticsTab">
           <el-tab-pane label="用户增长趋势" name="trend">
@@ -256,17 +262,32 @@
         <el-form-item label="用户名" prop="username">
           <el-input v-model="userForm.username" placeholder="请输入用户名" />
         </el-form-item>
+        <el-form-item v-if="userForm.userType !== 'enterprise'" label="姓名" prop="name">
+          <el-input v-model="userForm.name" placeholder="请输入姓名" />
+        </el-form-item>
+        <el-form-item v-if="userForm.userType === 'enterprise'" label="企业名称" prop="companyName">
+          <el-input v-model="userForm.companyName" placeholder="请输入企业名称" />
+        </el-form-item>
+        <el-form-item v-if="userForm.userType === 'enterprise'" label="联系人" prop="contactPerson">
+          <el-input v-model="userForm.contactPerson" placeholder="请输入联系人姓名" />
+        </el-form-item>
         <el-form-item v-if="!isEdit" label="密码" prop="password">
           <el-input v-model="userForm.password" type="password" placeholder="请输入密码" show-password />
         </el-form-item>
         <el-form-item label="邮箱" prop="email">
           <el-input v-model="userForm.email" placeholder="请输入邮箱" />
         </el-form-item>
-        <el-form-item label="手机号" prop="phone">
+        <el-form-item v-if="userForm.userType !== 'enterprise'" label="手机号" prop="phone">
           <el-input v-model="userForm.phone" placeholder="请输入手机号" />
         </el-form-item>
+        <el-form-item v-else label="联系人电话" prop="contactPhone">
+          <el-input v-model="userForm.contactPhone" placeholder="请输入联系人电话" />
+        </el-form-item>
+        <el-form-item v-if="userForm.userType === 'enterprise'" label="企业地址" prop="address">
+          <el-input v-model="userForm.address" placeholder="请输入企业地址" />
+        </el-form-item>
         <el-form-item label="用户类型" prop="userType">
-          <el-select v-model="userForm.userType" placeholder="请选择用户类型" style="width: 100%">
+          <el-select v-model="userForm.userType" :disabled="isEdit" placeholder="请选择用户类型" style="width: 100%">
             <el-option label="个人用户" value="personal" />
             <el-option label="企业用户" value="enterprise" />
             <el-option label="管理员" value="admin" />
@@ -355,22 +376,24 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, computed, nextTick } from 'vue'
+import { ref, reactive, onMounted, nextTick, onBeforeUnmount, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   User, UserFilled, OfficeBuilding, CircleCheck, CircleClose,
   Search, Refresh, Plus, Download, View, Edit, Delete,
-  ArrowDown, Key, Clock, TrendCharts, DataAnalysis
+  ArrowDown, Key, Clock, TrendCharts
 } from '@element-plus/icons-vue'
 import request from '../../utils/request'
+import * as echarts from 'echarts'
 
 // 统计数据
 const stats = reactive({
-  total: 1256,
-  personal: 892,
-  enterprise: 328,
-  active: 1180,
-  disabled: 76
+  total: 0,
+  personal: 0,
+  enterprise: 0,
+  admin: 0,
+  active: 0,
+  disabled: 0
 })
 
 // 搜索表单
@@ -388,9 +411,14 @@ const isEdit = ref(false)
 const userForm = reactive({
   id: null,
   username: '',
+  name: '',
   password: '',
   email: '',
   phone: '',
+  companyName: '',
+  contactPerson: '',
+  contactPhone: '',
+  address: '',
   userType: 'personal',
   status: 1,
   remark: ''
@@ -405,12 +433,27 @@ const userRules = {
     { required: true, message: '请输入密码', trigger: 'blur' },
     { min: 6, max: 20, message: '长度在 6 到 20 个字符', trigger: 'blur' }
   ],
+  name: [
+    { required: true, message: '请输入姓名', trigger: 'blur' },
+    { min: 2, max: 20, message: '长度在 2 到 20 个字符', trigger: 'blur' }
+  ],
+  companyName: [
+    { required: true, message: '请输入企业名称', trigger: 'blur' },
+    { min: 2, max: 100, message: '长度在 2 到 100 个字符', trigger: 'blur' }
+  ],
+  contactPerson: [
+    { required: true, message: '请输入联系人姓名', trigger: 'blur' }
+  ],
   email: [
     { required: true, message: '请输入邮箱', trigger: 'blur' },
     { type: 'email', message: '请输入正确的邮箱地址', trigger: 'blur' }
   ],
   phone: [
     { required: true, message: '请输入手机号', trigger: 'blur' },
+    { pattern: /^1[3-9]\d{9}$/, message: '请输入正确的手机号码', trigger: 'blur' }
+  ],
+  contactPhone: [
+    { required: true, message: '请输入联系人电话', trigger: 'blur' },
     { pattern: /^1[3-9]\d{9}$/, message: '请输入正确的手机号码', trigger: 'blur' }
   ],
   userType: [{ required: true, message: '请选择用户类型', trigger: 'change' }]
@@ -438,14 +481,35 @@ const trendChartRef = ref(null)
 const distributionChartRef = ref(null)
 const activityChartRef = ref(null)
 const statisticsData = reactive({
-  monthlyNew: 156,
-  dailyActive: 423,
-  retentionRate: 78.5,
-  certificationRate: 45.2
+  monthlyNew: 0,
+  dailyActive: 0,
+  retentionRate: 0,
+  certificationRate: 0
 })
+
+const trendData = reactive({
+  labels: [],
+  personal: [],
+  enterprise: [],
+  total: []
+})
+
+const activityData = reactive({
+  todayNewPersonal: 0,
+  todayNewEnterprise: 0,
+  weekNewPersonal: 0,
+  weekNewEnterprise: 0,
+  monthNewPersonal: 0,
+  monthNewEnterprise: 0
+})
+
+let trendChartInstance = null
+let distributionChartInstance = null
+let activityChartInstance = null
 
 onMounted(() => {
   loadUsers()
+  loadOverviewStats()
 })
 
 const loadUsers = async () => {
@@ -455,16 +519,22 @@ const loadUsers = async () => {
       enterprise: '/admin/user/enterprise',
       admin: '/admin/user/admin'
     }
-    const endpoint = endpointMap[searchForm.userType] || '/admin/user/personal'
+    const listType = searchForm.userType || 'personal'
+    const endpoint = endpointMap[listType] || '/admin/user/personal'
+    const params = {
+      page: currentPage.value,
+      size: pageSize.value,
+      keyword: searchForm.keyword
+    }
+    if (searchForm.status !== '' && searchForm.status !== null && searchForm.status !== undefined) {
+      params.status = Number(searchForm.status)
+    }
     const response = await request.get(endpoint, {
-      params: {
-        page: currentPage.value,
-        size: pageSize.value,
-        keyword: searchForm.keyword
-      }
+      params
     })
         
-    users.value = response.data.records || []
+    const records = response.data.records || []
+    users.value = records.map(record => normalizeUserRecord(record, listType))
     totalUsers.value = response.data.total || 0
   } catch (error) {
     console.error('加载用户失败:', error)
@@ -474,7 +544,33 @@ const loadUsers = async () => {
   }
 }
 
+const loadOverviewStats = async () => {
+  try {
+    const response = await request.get('/admin/user/statistics')
+    const data = response.data || {}
+
+    const totalPersonal = data.totalPersonalUsers || 0
+    const totalEnterprise = data.totalEnterpriseUsers || 0
+    const totalAdmin = data.totalAdminUsers || 0
+    const activePersonal = data.activePersonalUsers || 0
+    const activeEnterprise = data.activeEnterpriseUsers || 0
+    const activeAdmin = data.activeAdminUsers || 0
+
+    stats.personal = totalPersonal
+    stats.enterprise = totalEnterprise
+    stats.admin = totalAdmin
+    stats.total = totalPersonal + totalEnterprise + totalAdmin
+
+    stats.active = activePersonal + activeEnterprise + activeAdmin
+    stats.disabled = Math.max(stats.total - stats.active, 0)
+  } catch (error) {
+    console.error('加载用户统计失败:', error)
+    ElMessage.error('加载用户统计失败')
+  }
+}
+
 const searchUsers = () => {
+  currentPage.value = 1
   loadUsers()
 }
 
@@ -483,6 +579,7 @@ const resetSearch = () => {
   searchForm.userType = ''
   searchForm.status = ''
   searchForm.dateRange = []
+  currentPage.value = 1
   loadUsers()
 }
 
@@ -500,14 +597,37 @@ const handleSelectionChange = (selection) => {
   selectedUsers.value = selection
 }
 
-const handleStatusChange = (user) => {
-  const action = user.status === 1 ? '启用' : '禁用'
-  ElMessage.success(`已${action}用户：${user.username}`)
+const handleStatusChange = async (user) => {
+  const newStatus = user.status
+  const previousStatus = newStatus === 1 ? 0 : 1
+  const action = newStatus === 1 ? '启用' : '禁用'
+  try {
+    await updateUserStatus(user, newStatus)
+    ElMessage.success(`已${action}用户：${user.username}`)
+    loadOverviewStats()
+  } catch (error) {
+    user.status = previousStatus
+    ElMessage.error('操作失败')
+  }
 }
 
 const openCreateUserDialog = () => {
   isEdit.value = false
-  Object.assign(userForm, { id: null, username: '', password: '', email: '', phone: '', userType: 'personal', status: 1, remark: '' })
+  Object.assign(userForm, {
+    id: null,
+    username: '',
+    name: '',
+    password: '',
+    email: '',
+    phone: '',
+    companyName: '',
+    contactPerson: '',
+    contactPhone: '',
+    address: '',
+    userType: 'personal',
+    status: 1,
+    remark: ''
+  })
   userDialogVisible.value = true
 }
 
@@ -519,11 +639,40 @@ const editUser = (user) => {
 }
 
 const submitUserForm = () => {
-  userFormRef.value?.validate((valid) => {
-    if (valid) {
+  userFormRef.value?.validate(async (valid) => {
+    if (!valid) return
+    try {
+      const payload = { ...userForm }
+      if (isEdit.value) {
+        delete payload.password
+      }
+
+      if (payload.userType === 'personal') {
+        if (isEdit.value) {
+          await request.put('/admin/user/personal', payload)
+        } else {
+          await request.post('/admin/user/personal', payload)
+        }
+      } else if (payload.userType === 'enterprise') {
+        if (isEdit.value) {
+          await request.put('/admin/user/enterprise', payload)
+        } else {
+          await request.post('/admin/user/enterprise', payload)
+        }
+      } else {
+        if (isEdit.value) {
+          await request.put('/admin/user/admin', payload)
+        } else {
+          await request.post('/admin/user/admin', payload)
+        }
+      }
+
       ElMessage.success(isEdit.value ? '用户信息已更新' : '用户添加成功')
       userDialogVisible.value = false
       loadUsers()
+      loadOverviewStats()
+    } catch (error) {
+      ElMessage.error('操作失败')
     }
   })
 }
@@ -540,10 +689,16 @@ const toggleUserStatus = (user) => {
     confirmButtonText: '确定',
     cancelButtonText: '取消',
     type: 'warning'
-  }).then(() => {
-    user.status = newStatus
-    currentUser.value.status = newStatus
-    ElMessage.success(`已${action}用户`)
+  }).then(async () => {
+    try {
+      await updateUserStatus(user, newStatus)
+      user.status = newStatus
+      if (currentUser.value) currentUser.value.status = newStatus
+      ElMessage.success(`已${action}用户`)
+      loadOverviewStats()
+    } catch (error) {
+      ElMessage.error('操作失败')
+    }
   }).catch(() => {})
 }
 
@@ -552,8 +707,13 @@ const resetPassword = (user) => {
     confirmButtonText: '确定',
     cancelButtonText: '取消',
     type: 'warning'
-  }).then(() => {
-    ElMessage.success('密码已重置为默认密码：123456')
+  }).then(async () => {
+    try {
+      await resetUserPassword(user)
+      ElMessage.success('密码已重置为默认密码：123456')
+    } catch (error) {
+      ElMessage.error('重置密码失败')
+    }
   }).catch(() => {})
 }
 
@@ -575,9 +735,15 @@ const deleteUser = (user) => {
     confirmButtonText: '确定删除',
     cancelButtonText: '取消',
     type: 'error'
-  }).then(() => {
-    users.value = users.value.filter(u => u.id !== user.id)
-    ElMessage.success('用户已删除')
+  }).then(async () => {
+    try {
+      await deleteUserByType(user)
+      ElMessage.success('用户已删除')
+      loadUsers()
+      loadOverviewStats()
+    } catch (error) {
+      ElMessage.error('删除失败')
+    }
   }).catch(() => {})
 }
 
@@ -586,9 +752,15 @@ const batchEnable = () => {
     confirmButtonText: '确定',
     cancelButtonText: '取消',
     type: 'info'
-  }).then(() => {
-    selectedUsers.value.forEach(u => { u.status = 1 })
-    ElMessage.success(`已启用 ${selectedUsers.value.length} 个用户`)
+  }).then(async () => {
+    try {
+      await batchUpdateStatus(1)
+      selectedUsers.value.forEach(u => { u.status = 1 })
+      ElMessage.success(`已启用 ${selectedUsers.value.length} 个用户`)
+      loadOverviewStats()
+    } catch (error) {
+      ElMessage.error('操作失败')
+    }
   }).catch(() => {})
 }
 
@@ -597,9 +769,15 @@ const batchDisable = () => {
     confirmButtonText: '确定',
     cancelButtonText: '取消',
     type: 'warning'
-  }).then(() => {
-    selectedUsers.value.forEach(u => { u.status = 0 })
-    ElMessage.success(`已禁用 ${selectedUsers.value.length} 个用户`)
+  }).then(async () => {
+    try {
+      await batchUpdateStatus(0)
+      selectedUsers.value.forEach(u => { u.status = 0 })
+      ElMessage.success(`已禁用 ${selectedUsers.value.length} 个用户`)
+      loadOverviewStats()
+    } catch (error) {
+      ElMessage.error('操作失败')
+    }
   }).catch(() => {})
 }
 
@@ -607,47 +785,409 @@ const exportUsers = () => {
   ElMessage.success(`正在导出 ${selectedUsers.value.length} 个用户数据...`)
 }
 
-const handleSizeChange = (size) => { pageSize.value = size }
-const handleCurrentChange = (page) => { currentPage.value = page }
+const handleSizeChange = (size) => {
+  pageSize.value = size
+  currentPage.value = 1
+  loadUsers()
+}
+const handleCurrentChange = (page) => {
+  currentPage.value = page
+  loadUsers()
+}
+
+const normalizeUserRecord = (record, type) => ({
+  ...record,
+  userType: type,
+  phone: record.phone || record.contactPhone,
+  avatar: record.avatar || record.logo
+})
+
+const resolveUserType = (user) => user.userType || searchForm.userType || 'personal'
+
+const buildStatusRequest = (userType, userId, status) => {
+  if (userType === 'admin') {
+    return {
+      url: status === 1 ? '/admin/user/admin/unfreeze' : '/admin/user/admin/freeze',
+      params: { adminId: userId }
+    }
+  }
+  if (userType === 'enterprise') {
+    return {
+      url: status === 1 ? '/admin/user/enterprise/unfreeze' : '/admin/user/enterprise/freeze',
+      params: { userId }
+    }
+  }
+  return {
+    url: status === 1 ? '/admin/user/personal/unfreeze' : '/admin/user/personal/freeze',
+    params: { userId }
+  }
+}
+
+const updateUserStatus = async (user, status) => {
+  const type = resolveUserType(user)
+  const { url, params } = buildStatusRequest(type, user.id, status)
+  await request.put(url, null, { params })
+}
+
+const resetUserPassword = async (user) => {
+  const type = resolveUserType(user)
+  const newPassword = '123456'
+  if (type === 'admin') {
+    await request.put('/admin/user/admin/reset-password', null, {
+      params: { adminId: user.id, newPassword }
+    })
+    return
+  }
+  if (type === 'enterprise') {
+    await request.put('/admin/user/enterprise/reset-password', null, {
+      params: { userId: user.id, newPassword }
+    })
+    return
+  }
+  await request.put('/admin/user/personal/reset-password', null, {
+    params: { userId: user.id, newPassword }
+  })
+}
+
+const deleteUserByType = async (user) => {
+  const type = resolveUserType(user)
+  if (type === 'admin') {
+    await request.delete('/admin/user/admin', { params: { adminId: user.id } })
+    return
+  }
+  if (type === 'enterprise') {
+    await request.delete('/admin/user/enterprise', { params: { userId: user.id } })
+    return
+  }
+  await request.delete('/admin/user/personal', { params: { userId: user.id } })
+}
+
+const batchUpdateStatus = async (status) => {
+  const type = resolveUserType(selectedUsers.value[0] || {})
+  const ids = selectedUsers.value.map(item => item.id)
+  if (ids.length === 0) return
+
+  if (type === 'admin') {
+    const url = status === 1 ? '/admin/user/admin/batch-unfreeze' : '/admin/user/admin/batch-freeze'
+    await request.put(url, ids)
+    return
+  }
+  if (type === 'enterprise') {
+    const url = status === 1 ? '/admin/user/enterprise/batch-unfreeze' : '/admin/user/enterprise/batch-freeze'
+    await request.put(url, ids)
+    return
+  }
+  const url = status === 1 ? '/admin/user/personal/batch-unfreeze' : '/admin/user/personal/batch-freeze'
+  await request.put(url, ids)
+}
+
+const buildFallbackTrendLabels = (days = 7) => {
+  const labels = []
+  const base = new Date()
+  base.setHours(0, 0, 0, 0)
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(base)
+    d.setDate(base.getDate() - i)
+    const mm = String(d.getMonth() + 1).padStart(2, '0')
+    const dd = String(d.getDate()).padStart(2, '0')
+    labels.push(`${mm}-${dd}`)
+  }
+  return labels
+}
+
+const applyTrendFallback = () => {
+  const labels = buildFallbackTrendLabels(7)
+  trendData.labels = labels
+  trendData.personal = labels.map(() => 0)
+  trendData.enterprise = labels.map(() => 0)
+  trendData.total = labels.map(() => 0)
+}
+
+const applyActivityFallback = () => {
+  statisticsData.dailyActive = 0
+  statisticsData.retentionRate = 0
+  statisticsData.certificationRate = 0
+  activityData.todayNewPersonal = 0
+  activityData.todayNewEnterprise = 0
+  activityData.weekNewPersonal = 0
+  activityData.weekNewEnterprise = 0
+  activityData.monthNewPersonal = 0
+  activityData.monthNewEnterprise = 0
+}
 
 // 显示统计图表对话框
 const showStatisticsDialog = async () => {
   statisticsDialogVisible.value = true
-  
-  // 等待DOM更新后渲染图表
-  await nextTick()
-  setTimeout(() => {
-    renderCharts()
-  }, 100)
+  await Promise.all([loadOverviewStats(), loadStatisticsData()])
 }
 
-// 渲染图表（使用简单的CSS图表，避免依赖echarts）
+const handleStatisticsDialogOpened = async () => {
+  await nextTick()
+  renderCharts()
+  setTimeout(() => {
+    resizeCharts()
+  }, 120)
+}
+
 const renderCharts = () => {
-  // 由于没有echarts，使用简单的数据展示
-  // 实际项目中可以引入echarts进行图表渲染
-  console.log('Charts would be rendered here with echarts')
+  renderTrendChart()
+  renderDistributionChart()
+  renderActivityChart()
 }
 
 // 加载统计数据
 const loadStatisticsData = async () => {
   try {
-    // 获取用户增长趋势
-    const trendResponse = await request.get('/admin/user/statistics/trend')
-    // 获取用户活跃度
-    const activityResponse = await request.get('/admin/user/statistics/activity')
-    
-    // 更新统计数据
-    if (trendResponse.data) {
-      statisticsData.monthlyNew = trendResponse.data.monthlyNew || 156
+    const [trendResult, activityResult] = await Promise.allSettled([
+      request.get('/admin/user/statistics/trend'),
+      request.get('/admin/user/statistics/activity')
+    ])
+
+    let partialFailed = false
+
+    if (trendResult.status === 'fulfilled') {
+      const trend = trendResult.value.data || {}
+      const personalTrend = trend.personalTrend || []
+      const enterpriseTrend = trend.enterpriseTrend || []
+      if (personalTrend.length === 0 && enterpriseTrend.length === 0) {
+        applyTrendFallback()
+      } else {
+        const labels = personalTrend.map(item => item.date)
+        const personalCounts = personalTrend.map(item => Number(item.count) || 0)
+        const enterpriseCounts = enterpriseTrend.map(item => Number(item.count) || 0)
+        const totalCounts = personalCounts.map((count, idx) => count + (enterpriseCounts[idx] || 0))
+
+        trendData.labels = labels
+        trendData.personal = personalCounts
+        trendData.enterprise = enterpriseCounts
+        trendData.total = totalCounts
+      }
+      statisticsData.monthlyNew = trend.monthlyNew || 0
+    } else {
+      partialFailed = true
+      applyTrendFallback()
     }
-    if (activityResponse.data) {
-      statisticsData.dailyActive = activityResponse.data.dailyActive || 423
-      statisticsData.retentionRate = activityResponse.data.retentionRate || 78.5
+
+    if (activityResult.status === 'fulfilled') {
+      const activity = activityResult.value.data || {}
+      statisticsData.dailyActive = activity.dailyActive || 0
+      statisticsData.retentionRate = activity.retentionRate || 0
+      statisticsData.certificationRate = activity.certificationRate || 0
+
+      activityData.todayNewPersonal = activity.todayNewPersonal || 0
+      activityData.todayNewEnterprise = activity.todayNewEnterprise || 0
+      activityData.weekNewPersonal = activity.weekNewPersonal || 0
+      activityData.weekNewEnterprise = activity.weekNewEnterprise || 0
+      activityData.monthNewPersonal = activity.monthNewPersonal || 0
+      activityData.monthNewEnterprise = activity.monthNewEnterprise || 0
+    } else {
+      partialFailed = true
+      applyActivityFallback()
+    }
+
+    if (partialFailed) {
+      ElMessage.warning('部分统计数据加载失败，已使用空数据展示')
     }
   } catch (error) {
-    console.log('使用模拟统计数据')
+    console.error('加载统计数据失败:', error)
+    applyTrendFallback()
+    applyActivityFallback()
+    ElMessage.error('加载统计数据失败')
   }
 }
+
+const renderTrendChart = () => {
+  if (!trendChartRef.value) return
+  if (!trendChartInstance) {
+    trendChartInstance = echarts.init(trendChartRef.value)
+  }
+
+  const labels = trendData.labels.length ? trendData.labels : buildFallbackTrendLabels(7)
+  const trendSeriesValues = [
+    ...(trendData.total || []),
+    ...(trendData.personal || []),
+    ...(trendData.enterprise || [])
+  ]
+  const hasTrendData = trendSeriesValues.some(value => Number(value) > 0)
+
+  const option = {
+    tooltip: { trigger: 'axis' },
+    legend: { data: ['总用户数', '个人用户', '企业用户'] },
+    grid: { left: 24, right: 24, top: 40, bottom: 24, containLabel: true },
+    xAxis: {
+      type: 'category',
+      data: labels,
+      boundaryGap: false,
+      axisLine: { lineStyle: { color: '#e5e7eb' } },
+      axisLabel: { color: '#6b7280' }
+    },
+    yAxis: {
+      type: 'value',
+      axisLine: { show: false },
+      axisTick: { show: false },
+      splitLine: { lineStyle: { color: '#f3f4f6' } },
+      axisLabel: { color: '#6b7280' }
+    },
+    series: [
+      {
+        name: '总用户数',
+        type: 'line',
+        data: trendData.total,
+        smooth: true,
+        lineStyle: { width: 3, color: '#6366f1' },
+        areaStyle: { color: 'rgba(99, 102, 241, 0.15)' },
+        symbol: 'circle',
+        symbolSize: 6
+      },
+      {
+        name: '个人用户',
+        type: 'line',
+        data: trendData.personal,
+        smooth: true,
+        lineStyle: { width: 2, color: '#10b981' },
+        symbol: 'circle',
+        symbolSize: 5
+      },
+      {
+        name: '企业用户',
+        type: 'line',
+        data: trendData.enterprise,
+        smooth: true,
+        lineStyle: { width: 2, color: '#f97316' },
+        symbol: 'circle',
+        symbolSize: 5
+      }
+    ],
+    graphic: hasTrendData ? [] : [
+      {
+        type: 'text',
+        left: 'center',
+        top: 'middle',
+        style: {
+          text: '近7天暂无新增数据',
+          fill: '#9ca3af',
+          font: '14px sans-serif'
+        }
+      }
+    ]
+  }
+
+  trendChartInstance.setOption(option)
+  trendChartInstance.resize()
+}
+
+const renderDistributionChart = () => {
+  if (!distributionChartRef.value) return
+  if (!distributionChartInstance) {
+    distributionChartInstance = echarts.init(distributionChartRef.value)
+  }
+
+  const option = {
+    tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+    legend: { bottom: 0 },
+    series: [
+      {
+        type: 'pie',
+        radius: ['35%', '70%'],
+        avoidLabelOverlap: false,
+        label: { show: false },
+        emphasis: { label: { show: true, fontSize: 14, fontWeight: 600 } },
+        data: [
+          { value: stats.personal, name: '个人用户' },
+          { value: stats.enterprise, name: '企业用户' },
+          { value: stats.admin, name: '管理员' }
+        ]
+      }
+    ]
+  }
+
+  distributionChartInstance.setOption(option)
+  distributionChartInstance.resize()
+}
+
+const renderActivityChart = () => {
+  if (!activityChartRef.value) return
+  if (!activityChartInstance) {
+    activityChartInstance = echarts.init(activityChartRef.value)
+  }
+
+  const personalSeries = [activityData.todayNewPersonal, activityData.weekNewPersonal, activityData.monthNewPersonal]
+  const enterpriseSeries = [activityData.todayNewEnterprise, activityData.weekNewEnterprise, activityData.monthNewEnterprise]
+  const hasActivityData = [...personalSeries, ...enterpriseSeries].some(value => Number(value) > 0)
+
+  const option = {
+    tooltip: { trigger: 'axis' },
+    legend: { data: ['个人用户', '企业用户'] },
+    grid: { left: 24, right: 24, top: 40, bottom: 24, containLabel: true },
+    xAxis: {
+      type: 'category',
+      data: ['今日新增', '本周新增', '本月新增'],
+      axisLine: { lineStyle: { color: '#e5e7eb' } },
+      axisLabel: { color: '#6b7280' }
+    },
+    yAxis: {
+      type: 'value',
+      axisLine: { show: false },
+      axisTick: { show: false },
+      splitLine: { lineStyle: { color: '#f3f4f6' } },
+      axisLabel: { color: '#6b7280' }
+    },
+    series: [
+      {
+        name: '个人用户',
+        type: 'bar',
+        stack: 'total',
+        data: personalSeries,
+        itemStyle: { color: '#34d399' }
+      },
+      {
+        name: '企业用户',
+        type: 'bar',
+        stack: 'total',
+        data: enterpriseSeries,
+        itemStyle: { color: '#f97316' }
+      }
+    ],
+    graphic: hasActivityData ? [] : [
+      {
+        type: 'text',
+        left: 'center',
+        top: 'middle',
+        style: {
+          text: '暂无活跃新增数据',
+          fill: '#9ca3af',
+          font: '14px sans-serif'
+        }
+      }
+    ]
+  }
+
+  activityChartInstance.setOption(option)
+  activityChartInstance.resize()
+}
+
+const resizeCharts = () => {
+  if (trendChartInstance) trendChartInstance.resize()
+  if (distributionChartInstance) distributionChartInstance.resize()
+  if (activityChartInstance) activityChartInstance.resize()
+}
+
+watch(statisticsTab, async () => {
+  await nextTick()
+  resizeCharts()
+})
+
+window.addEventListener('resize', resizeCharts)
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', resizeCharts)
+  if (trendChartInstance) trendChartInstance.dispose()
+  if (distributionChartInstance) distributionChartInstance.dispose()
+  if (activityChartInstance) activityChartInstance.dispose()
+  trendChartInstance = null
+  distributionChartInstance = null
+  activityChartInstance = null
+})
 </script>
 
 <style scoped>
@@ -878,14 +1418,8 @@ const loadStatisticsData = async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #ffffff;
   border-radius: 8px;
-  color: white;
-  font-size: 16px;
-}
-
-.statistics-dialog .chart::after {
-  content: '📊 图表区域 (需要引入 ECharts 库)';
 }
 
 .statistics-summary {

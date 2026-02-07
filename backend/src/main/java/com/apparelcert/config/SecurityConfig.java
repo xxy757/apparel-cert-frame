@@ -33,7 +33,8 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
                 "/swagger-resources/**",
                 "/doc.html",
                 "/webjars/**",
-                "/favicon.ico"
+                "/favicon.ico",
+                "/uploads/**"
             ).permitAll()
             // 允许认证相关路径（登录、注册）
             .antMatchers("/api/auth/**").permitAll()

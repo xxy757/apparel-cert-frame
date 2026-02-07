@@ -65,8 +65,8 @@ public class CertificationServiceImpl extends ServiceImpl<CertificationMapper, C
         if (certification == null) {
             return false;
         }
-        certification.setStatus(1); // 1: 实操已提交
-        certification.setCertificateUrl(fileUrl); // 暂存实操文件URL
+        certification.setPracticalFileUrl(fileUrl);
+        certification.setStatus(1); // 1: 实操已提交，进入审核流程
         return this.updateById(certification);
     }
 

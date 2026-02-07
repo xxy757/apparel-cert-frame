@@ -97,7 +97,7 @@
         <div class="news-grid">
           <div class="news-card" v-for="news in newsList" :key="news.id">
             <div class="news-image">
-              <img :src="news.image" :alt="news.title" class="news-img">
+              <img :src="getNewsImage(news)" :alt="news.title" class="news-img">
               <div class="news-date-badge">{{ news.date }}</div>
             </div>
             <div class="news-content">
@@ -185,6 +185,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { User, Briefcase, Medal, Document, Star, Message, Location, Phone, ArrowRight, ArrowDown, SwitchButton } from '@element-plus/icons-vue'
 import request from '@/utils/request'
 import emitter from '@/utils/eventBus'
+import { clearSession, getActiveUserType, getTokenForPath, syncSessionForPath } from '@/utils/auth'
 
 export default {
   name: 'Home',
@@ -209,11 +210,13 @@ export default {
     // 计算显示名称
     const displayName = computed(() => {
       if (!userInfo.value) return ''
-      const userType = localStorage.getItem('userType')
+      const userType = getActiveUserType()
       if (userType === '1') {
         return userInfo.value.name || userInfo.value.username || '用户'
       } else if (userType === '2') {
         return userInfo.value.companyName || userInfo.value.contactPerson || '企业用户'
+      } else if (userType === '3') {
+        return userInfo.value.username || '管理员'
       }
       return '用户'
     })
@@ -221,18 +224,21 @@ export default {
     // 计算头像
     const userAvatar = computed(() => {
       if (!userInfo.value) return ''
-      const userType = localStorage.getItem('userType')
+      const userType = getActiveUserType()
       if (userType === '1') {
         return userInfo.value.avatar || ''
       } else if (userType === '2') {
         return userInfo.value.logo || ''
+      } else if (userType === '3') {
+        return userInfo.value.avatar || ''
       }
       return ''
     })
 
     // 获取当前用户信息
     const fetchCurrentUser = async () => {
-      const token = localStorage.getItem('token')
+      syncSessionForPath('/')
+      const token = getTokenForPath('/')
       if (!token) {
         isLoggedIn.value = false
         return
@@ -240,13 +246,13 @@ export default {
 
       try {
         const res = await request.get('/auth/current-user')
-        if (res.success) {
-          userInfo.value = res
+        if (res.code === 200 && res.data && res.data.success !== false) {
+          userInfo.value = res.data
           isLoggedIn.value = true
         } else {
           isLoggedIn.value = false
-          localStorage.removeItem('token')
-          localStorage.removeItem('userType')
+          const activeType = getActiveUserType()
+          if (activeType) clearSession(activeType)
         }
       } catch (error) {
         console.error('获取用户信息失败:', error)
@@ -265,7 +271,7 @@ export default {
 
     // 显示用户信息
     const showUserProfile = () => {
-      const userType = localStorage.getItem('userType')
+      const userType = getActiveUserType()
       let content = ''
       
       if (userType === '1' && userInfo.value) {
@@ -290,6 +296,14 @@ export default {
             <p><strong>认证状态：</strong>${authStatusMap[userInfo.value.authStatus] || '-'}</p>
           </div>
         `
+      } else if (userType === '3' && userInfo.value) {
+        content = `
+          <div style="line-height: 2;">
+            <p><strong>用户名：</strong>${userInfo.value.username || '-'}</p>
+            <p><strong>角色：</strong>管理员</p>
+            <p><strong>邮箱：</strong>${userInfo.value.email || '-'}</p>
+          </div>
+        `
       }
 
       ElMessageBox.alert(content, '个人信息', {
@@ -305,8 +319,8 @@ export default {
         cancelButtonText: '取消',
         type: 'warning'
       }).then(() => {
-        localStorage.removeItem('token')
-        localStorage.removeItem('userType')
+        const activeType = getActiveUserType()
+        if (activeType) clearSession(activeType)
         userInfo.value = null
         isLoggedIn.value = false
         ElMessage.success('已退出登录')
@@ -314,29 +328,35 @@ export default {
       }).catch(() => {})
     }
 
-    const newsList = ref([
-      {
-        id: 1,
-        title: '2024年服装行业技能人才需求趋势分析',
-        date: '2024-01-15',
-        excerpt: '随着服装行业的快速发展，技能型人才的需求呈现出哪些新趋势？本文为您详细分析。',
-        image: 'https://images.unsplash.com/photo-1581655353564-df123a1eb820?w=300&h=200&fit=crop'
-      },
-      {
-        id: 2,
-        title: '服装设计师认证标准全新升级',
-        date: '2024-01-10',
-        excerpt: '为适应行业发展需求，本平台对服装设计师认证标准进行了全面升级，更加注重实践能力的考核。',
-        image: 'https://images.unsplash.com/photo-1576566588028-4147f3842f27?w=300&h=200&fit=crop'
-      },
-      {
-        id: 3,
-        title: '知名服装企业联合招聘专场即将举行',
-        date: '2024-01-05',
-        excerpt: '本平台将联合多家知名服装企业举办专场招聘会，提供众多优质岗位，欢迎广大人才参与。',
-        image: 'https://images.unsplash.com/photo-1563013544-824ae1b704d3?w=300&h=200&fit=crop'
+    const newsList = ref([])
+    const defaultNewsImage = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="300" height="200"><rect width="300" height="200" fill="#e5e7eb"/><text x="150" y="108" font-size="24" text-anchor="middle" fill="#6b7280">NEWS</text></svg>'
+    )}`
+    const formatNewsDate = (date) => {
+      if (!date) return ''
+      const parsed = new Date(date)
+      if (Number.isNaN(parsed.getTime())) return ''
+      return parsed.toLocaleDateString('zh-CN')
+    }
+    const getNewsImage = (news) => news.image || defaultNewsImage
+    const loadLatestNews = async () => {
+      try {
+        const res = await request.get('/announcement/latest', {
+          params: { limit: 3 }
+        })
+        const records = Array.isArray(res.data) ? res.data : []
+        newsList.value = records.map(item => ({
+          id: item.id,
+          title: item.title || '行业动态',
+          date: formatNewsDate(item.publishTime || item.createTime),
+          excerpt: item.content ? item.content.slice(0, 80) : '',
+          image: item.coverImage || ''
+        }))
+      } catch (error) {
+        console.error('获取行业动态失败:', error)
+        newsList.value = []
       }
-    ])
+    }
 
     const features = ref([
       {
@@ -366,9 +386,8 @@ export default {
     ])
 
     onMounted(() => {
-      // 页面加载时的初始化操作
-      console.log('Home page loaded')
       fetchCurrentUser()
+      loadLatestNews()
       emitter.on('user-updated', fetchCurrentUser)
     })
 
@@ -383,6 +402,7 @@ export default {
       userInfo,
       displayName,
       userAvatar,
+      getNewsImage,
       handleCommand,
       showUserProfile,
       handleLogout

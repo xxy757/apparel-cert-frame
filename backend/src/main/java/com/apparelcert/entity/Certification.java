@@ -30,5 +30,6 @@ public class Certification extends BaseEntity {
     private Date reviewTime;
     private Long reviewerId;
     private String certificateUrl;
+    private String practicalFileUrl;
     private Date expireTime;
 }

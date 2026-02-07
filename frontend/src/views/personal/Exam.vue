@@ -213,6 +213,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Clock, ArrowLeft, ArrowRight, Select, Warning } from '@element-plus/icons-vue'
 import request from '@/utils/request'
+import { getUserIdForPath } from '@/utils/auth'
 
 const route = useRoute()
 const router = useRouter()
@@ -329,8 +330,7 @@ const submitExam = () => {
 const confirmSubmit = async () => {
   submitting.value = true
   try {
-    // 模拟提交考试答案
-    const userId = Number(localStorage.getItem('userId') || 0)
+    const userId = Number(getUserIdForPath('/personal') || 0)
     const response = await request.post('/exam/submit', {
       examRecordId: examRecordId.value,
       userId,
@@ -351,18 +351,7 @@ const confirmSubmit = async () => {
       timer = null
     }
   } catch (error) {
-    // 模拟结果（用于演示）
-    examResult.score = 85
-    examResult.correctCount = 17
-    examResult.passed = true
-
-    showSubmitDialog.value = false
-    showResultDialog.value = true
-
-    if (timer) {
-      clearInterval(timer)
-      timer = null
-    }
+    ElMessage.error(error?.response?.data?.message || '提交试卷失败，请稍后重试')
   } finally {
     submitting.value = false
   }
@@ -374,7 +363,7 @@ const backToCertification = () => {
 
 const loadExamQuestions = async () => {
   try {
-    const userId = Number(localStorage.getItem('userId') || 0)
+    const userId = Number(getUserIdForPath('/personal') || 0)
     const response = await request.post('/exam/generate', {
       userId,
       applicationId: Number(route.query.applicationId),
@@ -383,69 +372,25 @@ const loadExamQuestions = async () => {
     })
     examRecordId.value = response.data?.examRecordId || null
     questions.value = response.data?.questions || []
-    examInfo.totalScore = response.data?.totalScore || examInfo.totalScore
-    examInfo.passScore = response.data?.passScore || Math.round(examInfo.totalScore * 0.6)
-    examInfo.duration = (response.data?.duration || 60) * 60
-    timeRemaining.value = examInfo.duration
-  } catch (error) {
-    // 使用模拟数据
-    questions.value = [
-      {
-        id: 1,
-        type: 'SINGLE_CHOICE',
-        content: '服装设计中，以下哪种颜色搭配方式最能体现高级感？',
-        score: 5,
-        options: [
-          { key: 'A', value: '红配绿' },
-          { key: 'B', value: '黑白灰为主的无彩色系' },
-          { key: 'C', value: '大面积撞色' },
-          { key: 'D', value: '荧光色组合' }
-        ]
-      },
-      {
-        id: 2,
-        type: 'SINGLE_CHOICE',
-        content: '在服装制版中，女装胸围放松量一般为多少？',
-        score: 5,
-        options: [
-          { key: 'A', value: '2-4cm' },
-          { key: 'B', value: '6-10cm' },
-          { key: 'C', value: '12-16cm' },
-          { key: 'D', value: '18-22cm' }
-        ]
-      },
-      {
-        id: 3,
-        type: 'MULTIPLE_CHOICE',
-        content: '以下哪些属于服装面料的基本性能指标？（多选）',
-        score: 10,
-        options: [
-          { key: 'A', value: '透气性' },
-          { key: 'B', value: '耐磨性' },
-          { key: 'C', value: '抗皱性' },
-          { key: 'D', value: '色牢度' }
-        ]
-      },
-      {
-        id: 4,
-        type: 'TRUE_FALSE',
-        content: '服装CAD系统可以提高服装设计和制版的效率。',
-        score: 5
-      },
-      {
-        id: 5,
-        type: 'SHORT_ANSWER',
-        content: '请简述服装可持续设计的主要原则和实践方法。',
-        score: 15
-      }
-    ]
-
-    // 初始化多选题答案为空数组
-    questions.value.forEach(q => {
+    Object.keys(userAnswers).forEach((key) => {
+      delete userAnswers[key]
+    })
+    questions.value.forEach((q) => {
       if (q.type === 'MULTIPLE_CHOICE') {
         userAnswers[q.id] = []
       }
     })
+    examInfo.totalScore = response.data?.totalScore || examInfo.totalScore
+    examInfo.passScore = response.data?.passScore || Math.round(examInfo.totalScore * 0.6)
+    examInfo.duration = (response.data?.duration || 60) * 60
+    timeRemaining.value = examInfo.duration
+    return questions.value.length > 0
+  } catch (error) {
+    console.error('加载试题失败:', error)
+    ElMessage.error(error?.response?.data?.message || '试题加载失败，请稍后重试')
+    questions.value = []
+    timeRemaining.value = 0
+    return false
   }
 }
 
@@ -472,9 +417,11 @@ const handleVisibilityChange = () => {
   }
 }
 
-onMounted(() => {
-  loadExamQuestions()
-  startTimer()
+onMounted(async () => {
+  const loaded = await loadExamQuestions()
+  if (loaded) {
+    startTimer()
+  }
   document.addEventListener('visibilitychange', handleVisibilityChange)
 })
 

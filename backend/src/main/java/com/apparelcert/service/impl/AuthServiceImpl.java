@@ -364,6 +364,7 @@ public class AuthServiceImpl implements AuthService {
             UserEnterprise user = userEnterpriseMapper.selectById(userId);
             if (user != null) {
                 result.put("username", user.getUsername());
+                result.put("enterpriseId", user.getId());
                 result.put("companyName", user.getCompanyName());
                 result.put("contactPerson", user.getContactPerson());
                 result.put("email", user.getEmail());
@@ -422,7 +423,7 @@ public class AuthServiceImpl implements AuthService {
     @Transactional(rollbackFor = Exception.class)
     public boolean resetPasswordByEmail(String email, String newPassword, Integer userType) {
         String encodedPassword = passwordEncoder.encode(newPassword);
-        
+
         if (userType == 1) {
             UserPersonal user = userPersonalMapper.findByEmail(email);
             if (user != null) {
@@ -437,5 +438,93 @@ public class AuthServiceImpl implements AuthService {
             }
         }
         return false;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Map<String, Object> devResetPassword(String account, String newPassword) {
+        Map<String, Object> result = new HashMap<>();
+
+        if (account == null || account.trim().isEmpty()) {
+            result.put("success", false);
+            result.put("message", "账号不能为空");
+            return result;
+        }
+
+        if (newPassword == null || newPassword.trim().isEmpty() || newPassword.length() < 6) {
+            result.put("success", false);
+            result.put("message", "密码长度不能少于6位");
+            return result;
+        }
+
+        // 加密新密码
+        String encodedPassword = passwordEncoder.encode(newPassword);
+
+        // 尝试在个人用户中查找
+        UserPersonal personalUser = userPersonalMapper.findByUsername(account);
+        if (personalUser == null) {
+            personalUser = userPersonalMapper.findByEmail(account);
+        }
+        if (personalUser == null) {
+            personalUser = userPersonalMapper.findByPhone(account);
+        }
+
+        if (personalUser != null) {
+            personalUser.setPassword(encodedPassword);
+            boolean updated = userPersonalMapper.updateById(personalUser) > 0;
+            result.put("success", updated);
+            result.put("message", updated ? "密码重置成功" : "密码重置失败");
+            result.put("userType", 1);
+            result.put("account", account);
+            return result;
+        }
+
+        // 尝试在企业用户中查找
+        UserEnterprise enterpriseUser = userEnterpriseMapper.findByUsername(account);
+        if (enterpriseUser == null) {
+            enterpriseUser = userEnterpriseMapper.findByEmail(account);
+        }
+        if (enterpriseUser == null) {
+            enterpriseUser = userEnterpriseMapper.findByPhone(account);
+        }
+
+        if (enterpriseUser != null) {
+            enterpriseUser.setPassword(encodedPassword);
+            boolean updated = userEnterpriseMapper.updateById(enterpriseUser) > 0;
+            result.put("success", updated);
+            result.put("message", updated ? "密码重置成功" : "密码重置失败");
+            result.put("userType", 2);
+            result.put("account", account);
+            return result;
+        }
+
+        // 尝试在管理员中查找
+        UserAdmin adminUser = userAdminMapper.findByUsername(account);
+        if (adminUser == null) {
+            adminUser = userAdminMapper.selectOne(
+                new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<UserAdmin>()
+                    .eq("email", account)
+            );
+        }
+        if (adminUser == null) {
+            adminUser = userAdminMapper.selectOne(
+                new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<UserAdmin>()
+                    .eq("phone", account)
+            );
+        }
+
+        if (adminUser != null) {
+            adminUser.setPassword(encodedPassword);
+            boolean updated = userAdminMapper.updateById(adminUser) > 0;
+            result.put("success", updated);
+            result.put("message", updated ? "密码重置成功" : "密码重置失败");
+            result.put("userType", 3);
+            result.put("account", account);
+            return result;
+        }
+
+        result.put("success", false);
+        result.put("message", "未找到该账号");
+        return result;
     }
 }

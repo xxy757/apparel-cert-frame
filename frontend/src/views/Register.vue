@@ -31,10 +31,6 @@
                 <el-input v-model="personalForm.username" placeholder="6-20位字母、数字或下划线" size="large">
                   <template #prefix><el-icon><User /></el-icon></template>
                 </el-input>
-                <div class="field-hint" v-if="usernameStatus">
-                  <el-icon :class="usernameStatus"><component :is="usernameStatus === 'available' ? 'CircleCheck' : 'CircleClose'" /></el-icon>
-                  {{ usernameStatus === 'available' ? '用户名可用' : '用户名已被占用' }}
-                </div>
               </el-form-item>
               <el-form-item label="密码" prop="password">
                 <el-input v-model="personalForm.password" type="password" placeholder="至少6位，包含字母和数字" size="large" show-password>
@@ -230,12 +226,12 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, watch } from 'vue'
+import { ref, reactive, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
   User, Lock, Message, UserFilled, Phone, OfficeBuilding, Location,
-  CircleCheckFilled, CircleCheck, CircleClose
+  CircleCheckFilled
 } from '@element-plus/icons-vue'
 import request from '../utils/request'
 
@@ -245,7 +241,6 @@ const activeTab = ref('personal')
 const personalStep = ref(0)
 const enterpriseStep = ref(0)
 const agreeTerms = ref(false)
-const usernameStatus = ref('')
 
 const personalFormRef = ref(null)
 const enterpriseFormRef = ref(null)
@@ -359,16 +354,6 @@ const enterpriseRules = {
     { pattern: /^1[3-9]\d{9}$/, message: '请输入正确的手机号', trigger: 'blur' }
   ]
 }
-
-// 检查用户名是否可用
-watch(() => personalForm.username, async (val) => {
-  if (val && val.length >= 6) {
-    // 模拟检查用户名
-    usernameStatus.value = Math.random() > 0.3 ? 'available' : 'taken'
-  } else {
-    usernameStatus.value = ''
-  }
-})
 
 const nextPersonalStep = async () => {
   const fields = personalStep.value === 0 

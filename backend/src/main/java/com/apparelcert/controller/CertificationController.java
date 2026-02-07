@@ -2,12 +2,15 @@ package com.apparelcert.controller;
 
 import com.apparelcert.common.Result;
 import com.apparelcert.entity.Certification;
+import com.apparelcert.entity.CertificationStandard;
 import com.apparelcert.service.CertificationService;
+import com.apparelcert.service.CertificationStandardService;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * 技能认证控制器
@@ -19,13 +22,16 @@ public class CertificationController {
     @Autowired
     private CertificationService certificationService;
 
+    @Autowired
+    private CertificationStandardService certificationStandardService;
+
     /**
      * 申请技能认证
      */
     @PostMapping
-    public Result<Boolean> applyCertification(@RequestBody Certification certification) {
+    public Result<Certification> applyCertification(@RequestBody Certification certification) {
         boolean result = certificationService.applyCertification(certification);
-        return Result.success(result);
+        return result ? Result.success(certification) : Result.error(500, "申请提交失败");
     }
 
     /**
@@ -74,5 +80,39 @@ public class CertificationController {
             @RequestParam(required = false) Long userId) {
         Page<Certification> pageInfo = certificationService.pageQuery(page, size, userId);
         return Result.success(pageInfo);
+    }
+
+    /**
+     * 获取可申请的认证标准列表（用户端）
+     */
+    @GetMapping("/standards")
+    public Result<Page<CertificationStandard>> getAvailableStandards(
+            @RequestParam(defaultValue = "1") Integer page,
+            @RequestParam(defaultValue = "100") Integer size,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String type,
+            @RequestParam(required = false) Integer level) {
+        Page<CertificationStandard> pageInfo =
+                certificationStandardService.pageQuery(page, size, keyword, type, level);
+        return Result.success(pageInfo);
+    }
+
+    /**
+     * 管理端更新认证状态（通过/拒绝）
+     */
+    @PutMapping("/admin/update-status")
+    public Result<Boolean> updateCertificationStatus(@RequestBody Map<String, Object> params) {
+        Long certificationId = Long.parseLong(params.get("certificationId").toString());
+        Integer status = Integer.parseInt(params.get("status").toString());
+        String reviewComment = params.get("reviewComment") != null ? params.get("reviewComment").toString() : null;
+
+        boolean result;
+        if (status != null && status == 3) {
+            result = certificationService.completeCertification(certificationId, null, null, reviewComment);
+        } else {
+            result = certificationService.updateStatus(certificationId, status, reviewComment);
+        }
+
+        return result ? Result.success(true) : Result.error(500, "更新失败");
     }
 }

@@ -92,6 +92,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ArrowDown, OfficeBuilding, SwitchButton } from '@element-plus/icons-vue'
 import request from '@/utils/request'
+import { clearSession, getActiveUserType, getSession } from '@/utils/auth'
 
 export default {
   name: 'EnterpriseCenter',
@@ -124,19 +125,19 @@ export default {
         const response = await request.get('/auth/current-user')
         if (response.code === 200) {
           const enterpriseData = response.data
-          enterprise.companyName = enterpriseData.companyName || localStorage.getItem('username') || ''
+          enterprise.companyName = enterpriseData.companyName || getSession('2').username || ''
           enterprise.authStatus = enterpriseData.authStatus || 0
           enterprise.logo = enterpriseData.logo || ''
           enterprise.contactPerson = enterpriseData.contactPerson || ''
         } else {
           console.error('获取企业信息失败:', response.message)
           // 回退到localStorage中的用户名
-          enterprise.companyName = localStorage.getItem('username') || ''
+          enterprise.companyName = getSession('2').username || ''
         }
       } catch (error) {
         console.error('获取企业信息异常:', error)
         // 回退到localStorage中的用户名
-        enterprise.companyName = localStorage.getItem('username') || ''
+        enterprise.companyName = getSession('2').username || ''
       }
     }
     
@@ -168,11 +169,8 @@ export default {
     }
     
     const logout = () => {
-      // 清除所有本地存储的用户信息
-      localStorage.removeItem('token')
-      localStorage.removeItem('userType')
-      localStorage.removeItem('userId')
-      localStorage.removeItem('username')
+      // 仅退出企业账号，不影响其他账号类型
+      clearSession('2')
       localStorage.removeItem('savedPassword')
       localStorage.removeItem('savedUsername')
 
@@ -180,7 +178,14 @@ export default {
       sessionStorage.clear()
 
       ElMessage.success('退出登录成功')
-      router.push('/login')
+      const nextType = getActiveUserType()
+      if (nextType === '1') {
+        router.push('/personal/resume')
+      } else if (nextType === '3') {
+        router.push('/admin/dashboard')
+      } else {
+        router.push('/login')
+      }
     }
     
     return {
@@ -199,15 +204,22 @@ export default {
 .enterprise-container {
   display: flex;
   min-height: 100vh;
+  height: 100vh;
   background-color: #f5f7fa;
+  overflow: hidden;
 }
 
 .enterprise-sidebar {
   width: 260px;
+  flex-shrink: 0;
   background-color: #304156;
   color: #bfcbd9;
   display: flex;
   flex-direction: column;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
 }
 
 .enterprise-info {
@@ -248,8 +260,11 @@ export default {
 
 .enterprise-main {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
 }
 
 .top-header {
@@ -261,6 +276,10 @@ export default {
   justify-content: space-between;
   padding: 0 20px;
   box-shadow: 0 1px 4px rgba(0, 21, 41, 0.08);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  flex-shrink: 0;
 }
 
 .header-left {
@@ -303,6 +322,7 @@ export default {
 
 .enterprise-content {
   flex: 1;
+  min-height: 0;
   padding: 20px;
   overflow-y: auto;
 }
